@@ -1,0 +1,9 @@
+.env
+.venv/
+__pycache__/
+*.egg-info/
+.ipynb_checkpoints/
+build/
+dist/
+work_dir/
+runs/
