@@ -1,7 +1,7 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "planner_review": "./cmbagent_lg/graph.py:graph"
+    "planner_review": "./cmbagent_lg/planning/graph.py:graph"
   },
   "env": ".env"
 }

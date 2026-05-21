@@ -12,8 +12,10 @@ formatter outputs. `history` accumulates one `(plan, review)` pair per
 completed review cycle, so each planner pass sees every prior round.
 """
 
-from typing import TypedDict, List, Tuple, Optional
-from cmbagent_lg.schemas import Plan, Review
+import operator
+from typing import TypedDict, List, Tuple, Optional, Annotated
+from cmbagent_lg.planning.schemas import Plan, Review
+from cmbagent_lg.timing import NodeTiming
 
 
 class PlanState(TypedDict, total=False):
@@ -23,3 +25,5 @@ class PlanState(TypedDict, total=False):
     current_review: Optional[Review]
     history: List[Tuple[Plan, Review]]
     round: int
+    # appended per node pass via @timed_node; concatenated by operator.add
+    node_elapsed_s: Annotated[List[NodeTiming], operator.add]

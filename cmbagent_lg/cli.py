@@ -67,7 +67,18 @@ def _resolve_trace_id(arg: str) -> str:
     return arg  # not a path — treat as raw trace id
 
 
-_KNOWN_AGENT_TAGS = ("planner", "plan_reviewer", "format_plan", "format_review")
+_KNOWN_AGENT_TAGS = (
+    # planning module
+    "planner",
+    "plan_reviewer",
+    "format_plan",
+    "format_review",
+    # self_debug module (executor makes no LLM call → never a GENERATION)
+    "engineer",
+    "format_engineer",
+    "execution_evaluator",
+    "step_evaluator",
+)
 
 
 def _latency_s(o: dict) -> float | None:

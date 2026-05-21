@@ -37,3 +37,10 @@ class PlanContext:
     available_agents: List[Tuple[str, str]] = field(
         default_factory=lambda: list(DEFAULT_AVAILABLE_AGENTS)
     )
+
+    # ── self_debug module ────────────────────────────────────────────────
+    # Max engineer attempts per sub-task before giving up. Mirrors
+    # cmbagent's `max_n_attempts` (default 3 there too).
+    max_n_attempts: int = 3
+    engineer_append_instructions: str = ""
+    evaluator_append_instructions: str = ""

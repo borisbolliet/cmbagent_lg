@@ -20,8 +20,16 @@ fallback is `gemini-3-flash-preview`:
     FORMAT_MODEL=gemini-3-flash-preview python examples/run_planner_review.py
 """
 
+import logging
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
+
+# The google-genai SDK logs "Both GOOGLE_API_KEY and GEMINI_API_KEY are set.
+# Using GOOGLE_API_KEY." at WARNING once per client construction
+# (`google.genai._api_client.get_env_api_key`). We deliberately standardize
+# on GOOGLE_API_KEY and pass it explicitly, so the notice is pure noise —
+# silence just that logger.
+logging.getLogger("google_genai._api_client").setLevel(logging.ERROR)
 
 
 def _api_key() -> str:

@@ -20,9 +20,10 @@ Shape matches `cmbagent/agents/planning/planner_response_evaluator.save_final_pl
     }
 """
 
+import shutil
 from datetime import datetime
 from pathlib import Path
-from cmbagent_lg.schemas import Plan
+from cmbagent_lg.planning.schemas import Plan
 
 
 def save_final_plan(plan: Plan, work_dir: str | Path) -> Path:
@@ -49,3 +50,19 @@ def save_trace_id(trace_id: str, work_dir: str | Path) -> Path:
 def default_work_dir() -> Path:
     """`./work_dir/{YYYY-mm-dd_HH-MM-SS}/` — cmbagent-style timestamped run dir."""
     return Path("work_dir") / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+
+def prepare_work_dir(work_dir: str | Path, clear: bool = True) -> Path:
+    """Resolve, optionally wipe, and (re)create a work_dir. Returns the Path.
+
+    Rerunning with the same explicit work_dir otherwise leaves stale artifacts
+    behind — e.g. `codebase/step_2.py` from a previous, longer run, or an old
+    `step_1_failure_*.py` — which makes the directory misleading. With
+    `clear=True` (default) the directory is emptied first so each run starts
+    from a clean slate.
+    """
+    wd = Path(work_dir).expanduser()
+    if clear and wd.exists():
+        shutil.rmtree(wd)
+    wd.mkdir(parents=True, exist_ok=True)
+    return wd

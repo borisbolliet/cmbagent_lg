@@ -20,7 +20,7 @@ class _SafeDict(dict):
 
 
 def _load_yaml(name: str) -> dict:
-    text = resources.files("cmbagent_lg.templates").joinpath(name).read_text()
+    text = resources.files("cmbagent_lg.planning.templates").joinpath(name).read_text()
     return yaml.safe_load(text)
 
 

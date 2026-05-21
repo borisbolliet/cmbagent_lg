@@ -26,18 +26,18 @@ from functools import lru_cache
 
 from cmbagent_lg.context import PlanContext
 from cmbagent_lg.llms import proposer, critic, formatter
-from cmbagent_lg.prompts import (
+from cmbagent_lg.planning.prompts import (
     planner_instructions,
     plan_reviewer_instructions,
     schema_field_brief,
 )
-from cmbagent_lg.schemas import Plan, Review, Step
-from cmbagent_lg.state import PlanState
+from cmbagent_lg.planning.schemas import Plan, Review, Step
+from cmbagent_lg.planning.state import PlanState
+from cmbagent_lg.timing import timed_node
 
 
-# Lazy-init: building a ChatGoogleGenerativeAI prints a warning to stdout
-# ("Both GOOGLE_API_KEY and GEMINI_API_KEY are set…"). Deferring instantiation
-# means importing the package (e.g. for the CLI) doesn't trigger them.
+# Lazy-init: defer constructing the Gemini clients until first use, so merely
+# importing the package (e.g. for the CLI) doesn't build API clients.
 @lru_cache(maxsize=1)
 def _proposer():
     return proposer()
@@ -119,6 +119,7 @@ def _render_history(history) -> str:
     return "\n".join(lines)
 
 
+@timed_node("planner")
 def planner(state: PlanState, runtime: Runtime[PlanContext]) -> PlanState:
     ctx = runtime.context
     round_n = state.get("round", 0) + 1
@@ -143,6 +144,7 @@ def planner(state: PlanState, runtime: Runtime[PlanContext]) -> PlanState:
     return {"raw_plan": msg.text, "round": round_n}
 
 
+@timed_node("plan_reviewer")
 def plan_reviewer(state: PlanState, runtime: Runtime[PlanContext]) -> PlanState:
     ctx = runtime.context
     plan = state["current_plan"]
@@ -187,6 +189,7 @@ def _make_formatter(schema, input_field: str, output_field: str, tag: str):
     return node
 
 
+@timed_node("format_plan")
 def format_plan(state: PlanState, runtime: Runtime[PlanContext]) -> PlanState:
     """Like `_make_formatter(Plan, …)` but builds the model dynamically so
     `sub_task_agent` is constrained to `Literal[*ctx.available_agents]` at the
@@ -215,6 +218,7 @@ _format_review_inner = _make_formatter(
 )
 
 
+@timed_node("format_review")
 def format_review(state: PlanState, runtime: Runtime[PlanContext]) -> PlanState:
     """Format the review, then snapshot (plan, review) into the history."""
     out = _format_review_inner(state, runtime)
