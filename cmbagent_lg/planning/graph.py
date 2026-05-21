@@ -8,7 +8,6 @@
 `num_rounds` (from `PlanContext`) counts **review cycles**. The loop always
 terminates with a planner pass that has incorporated the last review, so
 total planner passes = `num_rounds + 1`.
-Referenced from `langgraph.json`: `./cmbagent_lg/planning/graph.py:graph`.
 """
 
 from langgraph.graph import StateGraph, START, END

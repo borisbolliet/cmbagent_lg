@@ -23,7 +23,6 @@ cmbagent_lg/
 │       └── plan_reviewer.yaml   (vendored from cmbagent)
 ├── examples/
 │   └── run_planner_review.py
-├── langgraph.json
 ├── pyproject.toml
 └── .env.example
 ```
