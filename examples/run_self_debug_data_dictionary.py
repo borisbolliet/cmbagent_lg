@@ -1,16 +1,23 @@
-"""Self-debug example that should require a retry.
+"""Self-debug example: build a data dictionary for a real tabular dataset.
 
-The step explicitly instructs the engineer to use `scipy.signal.gaussian`,
-which was removed in scipy 1.13 (moved to `scipy.signal.windows.gaussian`).
-The host venv has scipy 1.16+, so attempt 1 should fail with ImportError;
-attempt 2 should locate the new path and succeed.
+The engineer reads an existing CSV from cmbagent's test dataset and produces
+a *data dictionary*: one row per column describing its dtype, missingness,
+cardinality, and summary stats. This exercises the *input file* path (the
+engineer reads a user-provided absolute path) alongside the usual `data/`
+output convention.
 
-    python examples/run_self_debug_retry.py                       # timestamped workdir
-    python examples/run_self_debug_retry.py runs/debug_retry_v1   # explicit workdir
+The dataset is selectable with the `DATASET` env var (default:
+`synthetic_drug_dev_portfolio.csv`). `Stocks.csv` is a good harder case — it
+has a `# Data source:` comment line before the header, which a naive
+`pd.read_csv` mishandles.
+
+    python examples/run_self_debug_data_dictionary.py runs/datadict
+    DATASET=Stocks.csv python examples/run_self_debug_data_dictionary.py runs/datadict_stocks
 """
 
 import os
 import sys
+import json
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -25,34 +32,40 @@ from cmbagent_lg import (
     prepare_work_dir,
 )
 
+# ── input dataset ───────────────────────────────────────────────────────
+
+DATASET_DIR = Path.home() / "GitHub/cmbagent/tests/test_dataset"
+DATASET = DATASET_DIR / os.environ.get("DATASET", "synthetic_drug_dev_portfolio.csv")
+assert DATASET.is_file(), (
+    f"dataset not found at {DATASET} — set DATASET=<filename> or adjust the path."
+)
+
 # ── inputs ──────────────────────────────────────────────────────────────
 
 ctx = PlanContext(
-    improved_main_task=(
-        "Smooth a noisy 1D signal with a Gaussian window from scipy and print "
-        "the first few smoothed values."
-    ),
+    improved_main_task="Produce a data dictionary for a tabular dataset.",
     hardware_constraints="Standard laptop. Single CPU. No GPU. 16 GB RAM.",
-    code_execution_timeout=30,
+    code_execution_timeout=60,
     max_n_attempts=3,
 )
 
 step = Step(
-    sub_task="Smooth a noisy 1D signal using a Gaussian window from scipy.",
+    sub_task="Build a data dictionary for the input CSV dataset.",
     sub_task_agent="engineer",
     bullet_points=[
-        "Generate a 1000-sample noisy sine: y = sin(2*pi*5*t/1000) + Gaussian noise (std=0.3, seed=0).",
-        "Build the smoothing kernel by importing `gaussian` from `scipy.signal` (i.e. "
-        "`from scipy.signal import gaussian; window = gaussian(M=51, std=7)`).",  # ← removed in scipy 1.13
-        "Do NOT use `scipy.signal.windows.gaussian` or `scipy.signal.windows.*` — the "
-        "downstream verification script does an AST check that the import is exactly "
-        "`from scipy.signal import gaussian`. Any other path fails verification.",
-        "Normalize the kernel so it sums to 1.",
-        "Convolve with the signal using numpy.convolve(mode='same').",
-        "Print the first 5 values of the smoothed signal, one per line.",
+        f"Load the dataset from this exact absolute path: {DATASET}",
+        "For every column, determine: the inferred dtype, the count of non-null "
+        "values, the fraction of missing values, and the number of unique values.",
+        "For numeric columns also record min, max, mean and std; for non-numeric "
+        "columns record up to 5 example category values.",
+        "Save the data dictionary as data/data_dictionary.csv — one row per "
+        "column of the input dataset.",
+        "Print the data dictionary as a readable table to stdout.",
     ],
-    code_execution_timeout=30,
+    code_execution_timeout=60,
 )
+
+_STEP_NUMBER = 1
 
 # ── workdir + tracing ───────────────────────────────────────────────────
 
@@ -62,8 +75,6 @@ elif os.environ.get("WORK_DIR"):
     work_dir = Path(os.environ["WORK_DIR"])
 else:
     work_dir = default_work_dir()
-# Rerunning with the same work_dir clears it first, so stale step_*/failure
-# files from a prior run don't linger. Set KEEP_WORK_DIR=1 to opt out.
 _clear = not os.environ.get("KEEP_WORK_DIR")
 if _clear and work_dir.exists():
     print(f"[work_dir] clearing existing       {work_dir}")
@@ -82,14 +93,12 @@ except Exception as e:
 
 # ── stream renderer ─────────────────────────────────────────────────────
 
-import json as _json
 from pydantic import BaseModel as _BaseModel
 
 _SKIP_KEYS = {
     "attempts", "error_history", "work_dir", "node_elapsed_s",
     "step_number", "data_baseline", "data_manifest", "step_feedback_history",
 }
-_STEP_NUMBER = 1  # standalone run — deep_research will pass the real plan index
 
 def _render_value(v):
     if isinstance(v, _BaseModel):
@@ -101,12 +110,12 @@ def _render_value(v):
         s = v.strip()
         if s and s[0] in "{[":
             try:
-                return _json.dumps(_json.loads(s), indent=2)
+                return json.dumps(json.loads(s), indent=2)
             except Exception:
                 pass
         return v
     try:
-        return _json.dumps(v, indent=2, default=str)
+        return json.dumps(v, indent=2, default=str)
     except Exception:
         return str(v)
 
@@ -116,11 +125,8 @@ initial_state = {"step": step, "work_dir": str(work_dir), "step_number": _STEP_N
 
 _task_snippet = ctx.improved_main_task.strip().split("\n")[0][:60]
 _run_name = f"self_debug · {_task_snippet} · {work_dir.name}"
-_tags = ["self_debug", "retry_test", work_dir.name]
+_tags = ["self_debug", "data_dictionary", DATASET.stem, work_dir.name]
 
-# Only fields that use the `operator.add` reducer inside the graph need
-# accumulation here. `error_history` is managed manually by the evaluator
-# node (returns the full list each time), so plain overwrite is correct.
 _LIST_REDUCED_KEYS = {"node_elapsed_s"}
 
 result = dict(initial_state)
@@ -161,12 +167,6 @@ print("\n=== STEP VERDICT (did it achieve the goal?) ===")
 print(step_verdict.format() if step_verdict else "(none — the code never ran cleanly)")
 print(f"\n=== attempts: {result.get('attempts', 0)} / {ctx.max_n_attempts} ===")
 
-err_hist = result.get("error_history", [])
-if err_hist:
-    print("\n=== ERROR HISTORY ===")
-    for i, e in enumerate(err_hist, start=1):
-        print(f"  attempt {i}: {e[:200]}{'…' if len(e) > 200 else ''}")
-
 timings = result.get("node_elapsed_s", [])
 if timings:
     print("\n=== TIMINGS (wall-clock) ===")
@@ -175,11 +175,10 @@ if timings:
         print(f"  {t['node']:<{width}}  {t['elapsed_s']:7.2f}s")
     print(f"  {'TOTAL':<{width}}  {sum(t['elapsed_s'] for t in timings):7.2f}s")
 
-import json as _json2
 _logs = work_dir / "logs"
 _logs.mkdir(parents=True, exist_ok=True)
 (_logs / f"step_{_STEP_NUMBER}_timings.json").write_text(
-    _json2.dumps(
+    json.dumps(
         {
             "node_elapsed_s": timings,
             "total_node_s": sum(t["elapsed_s"] for t in timings),
@@ -188,8 +187,12 @@ _logs.mkdir(parents=True, exist_ok=True)
     )
 )
 
+for f in result.get("data_manifest", []):
+    print(f"\n[data] produced {f['path']} ({f['bytes']} bytes)")
+
 print(f"\n[work_dir] code under               {work_dir}/codebase/")
-print(f"[work_dir] verdict + timings under  {work_dir}/logs/")
+print(f"[work_dir] data files under         {work_dir}/data/")
+print(f"[work_dir] manifest + verdict under {work_dir}/logs/")
 
 if handler is not None and handler.last_trace_id:
     trace_id = handler.last_trace_id

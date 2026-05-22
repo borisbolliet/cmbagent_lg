@@ -26,6 +26,18 @@ instructions: |
 
     {evaluator_append_instructions}
 
+    ----- YOUR PRIOR FEEDBACK ON THIS STEP ------
+    Feedback you gave on earlier attempts of this SAME step (empty on the
+    first attempt). Use it to:
+      - confirm a previously-flagged issue is now actually resolved before
+        you pass the step;
+      - stay consistent — do not contradict an earlier judgment;
+      - if you keep flagging the same unmet requirement attempt after
+        attempt, say so explicitly in `feedback` so it's clear the loop is
+        stuck on it.
+    {step_feedback_history}
+    ---------------------------------------------
+
     ----- CURRENT SUB-TASK ----------------------
     {current_sub_task}
     ---------------------------------------------

@@ -427,11 +427,13 @@ def step_evaluator(state: DebugState, runtime: Runtime[PlanContext]) -> DebugSta
     """
     ctx = runtime.context
     step = state["step"]
+    prior_feedback = state.get("step_feedback_history", [])
     system = step_evaluator_instructions(
         ctx,
         step,
         stdout=state.get("execution_stdout", ""),
         data_manifest=state.get("data_manifest", []),
+        step_feedback_history=prior_feedback,
     )
     user = (
         "Judge whether the step goal was achieved and emit a verdict. "
@@ -444,11 +446,40 @@ def step_evaluator(state: DebugState, runtime: Runtime[PlanContext]) -> DebugSta
     )
 
     n = state.get("step_number", 1)
+    attempt = state.get("attempts", 0)
+
+    # On a goal-miss, record this attempt's feedback so the *next*
+    # step_evaluator pass sees its own trail (mirrors `error_history`).
+    feedback_history = list(prior_feedback)
+    if not verdict.fulfilled:
+        bits = []
+        if verdict.unmet_requirements:
+            bits.append("unmet — " + "; ".join(verdict.unmet_requirements))
+        if verdict.feedback:
+            bits.append("feedback — " + verdict.feedback)
+        feedback_history.append(
+            f"attempt {attempt}: " + (" | ".join(bits) if bits else "goal not met")
+        )
+
     logs = _logs_dir(state)
     if logs is not None:
         (logs / f"step_{n}_verdict.json").write_text(verdict.model_dump_json(indent=2))
 
-    return {"current_step_verdict": verdict}
+    # A goal-miss is a failure too: demote this attempt's script/log to
+    # failure-variants so the audit trail covers BOTH gates (the code here
+    # ran cleanly, so execution_evaluator left the canonical name in place).
+    # An attempt fails exactly one gate, so `failure_{attempt}` never collides.
+    codebase = _codebase_dir(state)
+    if codebase is not None and not verdict.fulfilled:
+        for ext in ("py", "log"):
+            canonical = codebase / f"step_{n}.{ext}"
+            if canonical.exists():
+                canonical.rename(codebase / f"step_{n}_failure_{attempt}.{ext}")
+
+    return {
+        "current_step_verdict": verdict,
+        "step_feedback_history": feedback_history,
+    }
 
 
 # ── routers ─────────────────────────────────────────────────────────────

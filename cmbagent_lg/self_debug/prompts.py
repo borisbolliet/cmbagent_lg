@@ -162,11 +162,18 @@ def _render_manifest(data_manifest: List[dict]) -> str:
     )
 
 
+def _render_step_history(step_feedback_history: List[str]) -> str:
+    if not step_feedback_history:
+        return "(this is the first attempt — no prior feedback on this step)"
+    return "\n".join(step_feedback_history)
+
+
 def step_evaluator_instructions(
     ctx: PlanContext,
     step: Step,
     stdout: str,
     data_manifest: List[dict],
+    step_feedback_history: List[str],
 ) -> str:
     return STEP_EVALUATOR_YAML["instructions"].format_map(
         _SafeDict(
@@ -175,5 +182,6 @@ def step_evaluator_instructions(
             current_instructions="\n".join(f"- {b}" for b in step.bullet_points),
             stdout=_head_tail(stdout),
             data_manifest=_render_manifest(data_manifest),
+            step_feedback_history=_render_step_history(step_feedback_history),
         )
     )

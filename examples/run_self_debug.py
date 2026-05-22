@@ -84,7 +84,7 @@ from pydantic import BaseModel as _BaseModel
 
 _SKIP_KEYS = {
     "attempts", "error_history", "work_dir", "node_elapsed_s",
-    "step_number", "data_baseline", "data_manifest",
+    "step_number", "data_baseline", "data_manifest", "step_feedback_history",
 }
 _STEP_NUMBER = 1  # standalone run — deep_research will pass the real plan index
 

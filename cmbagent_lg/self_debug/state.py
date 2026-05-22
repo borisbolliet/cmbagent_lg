@@ -63,8 +63,12 @@ class DebugState(TypedDict, total=False):
     # step_evaluator — did the run ACHIEVE the sub-task's goal?
     current_step_verdict: StepVerdict
 
-    # Accumulated across the loop — one entry per failed attempt
+    # Accumulated across the loop — one entry per failed attempt.
+    # `error_history`         — code-execution failures (execution_evaluator)
+    # `step_feedback_history` — goal-misses (step_evaluator), so step_evaluator
+    #                           sees its own prior feedback on later attempts
     error_history: List[str]
+    step_feedback_history: List[str]
 
     # Bookkeeping
     work_dir: Optional[str]
