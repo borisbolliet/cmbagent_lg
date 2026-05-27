@@ -40,7 +40,7 @@ from langgraph.runtime import Runtime
 
 from cmbagent_lg.context import PlanContext
 from cmbagent_lg.llms import proposer, critic, formatter
-from cmbagent_lg.planning.prompts import schema_field_brief
+from cmbagent_lg.prompt_utils import schema_field_brief
 from cmbagent_lg.self_debug.prompts import (
     engineer_instructions,
     evaluator_instructions,
@@ -127,7 +127,12 @@ def engineer(state: DebugState, runtime: Runtime[PlanContext]) -> DebugState:
         last_step_feedback=last_step_feedback,
     )
 
-    system = engineer_instructions(ctx, step, retry_block)
+    system = engineer_instructions(
+        ctx,
+        step,
+        retry_block,
+        previous_steps_execution_summary=state.get("previous_steps_execution_summary") or "",
+    )
     user = (
         "Produce the script now, in the format described above. Write in natural "
         "prose around a single Python code block — a downstream specialist will "
@@ -485,14 +490,31 @@ def step_evaluator(state: DebugState, runtime: Runtime[PlanContext]) -> DebugSta
 # ── routers ─────────────────────────────────────────────────────────────
 
 
+# Failure kinds the strict loop structurally cannot fix — the engineer can't
+# install packages, and a renamed/removed API may need information the model
+# lacks. Classification comes from `execution_evaluator` (an LLM that reads
+# stdout+stderr) — NOT a stderr regex, because the engineer often catches the
+# exception and prints it to stdout, leaving no traceback to match.
+_ESCALATABLE_KINDS = ("missing_module", "renamed_api")
+
+
 def route_after_execution_evaluator(
     state: DebugState, runtime: Runtime[PlanContext]
 ) -> str:
-    """Code gate: success → step_evaluator; failure & attempts left → engineer;
-    failure & exhausted → END."""
+    """Code gate. success → step_evaluator. On failure: an escalatable failure
+    (missing package / renamed API) routes to `escalation` once per step, even
+    if attempts are exhausted — it's the escape hatch precisely for when the
+    strict loop is stuck. Otherwise: engineer (retry) / END (exhausted)."""
     ctx = runtime.context
-    if state["current_execution_verdict"].status == "success":
+    verdict = state["current_execution_verdict"]
+    if verdict.status == "success":
         return "step_evaluator"
+    if (
+        ctx.enable_escalation
+        and not state.get("escalated", False)
+        and verdict.failure_kind in _ESCALATABLE_KINDS
+    ):
+        return "escalation"
     if state.get("attempts", 0) >= ctx.max_n_attempts:
         return END
     return "engineer"

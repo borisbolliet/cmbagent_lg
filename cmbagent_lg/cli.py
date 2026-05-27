@@ -78,6 +78,9 @@ _KNOWN_AGENT_TAGS = (
     "format_engineer",
     "execution_evaluator",
     "step_evaluator",
+    "escalation",
+    # deep_research (outer orchestrator)
+    "run_step",
 )
 
 

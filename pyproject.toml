@@ -23,6 +23,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["jupyterlab", "ipykernel"]
+# The self_debug escalation node (opt-in) runs a Claude Agent SDK agent.
+escalation = ["claude-agent-sdk>=0.1"]
 
 [project.scripts]
 cmbagent-lg-cost = "cmbagent_lg.cli:cost_main"
@@ -31,4 +33,5 @@ cmbagent-lg-cost = "cmbagent_lg.cli:cost_main"
 include = ["cmbagent_lg*"]
 
 [tool.setuptools.package-data]
-cmbagent_lg = ["templates/*.yaml"]
+# Templates live in each module's own templates/ dir (planning/, self_debug/).
+cmbagent_lg = ["**/templates/*.yaml"]

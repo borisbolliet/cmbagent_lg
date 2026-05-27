@@ -14,11 +14,15 @@ instructions: |
     expected files exist and are non-empty.
 
     Rules:
-    - `fulfilled=true` only if EVERY part of the sub-task AND EVERY bullet
-      point is satisfied.
-    - `fulfilled=false` if anything is missing, skipped, or contradicted by
-      stdout. List each unmet item in `unmet_requirements` and give concrete,
-      actionable `feedback` for the engineer's next attempt.
+    - `fulfilled=true` if EVERY part of the sub-task AND EVERY bullet point
+      is satisfied. **Extra, unrequested work is NOT a failure** — judge
+      whether the required things were done, not whether the engineer did
+      only the minimum. If a later plan step's output happens to also be
+      produced here, that is fine; do not flag it.
+    - `fulfilled=false` only if something REQUIRED is missing, skipped, or
+      contradicted by stdout. List each unmet item in `unmet_requirements`
+      and give concrete, actionable `feedback` for the engineer's next
+      attempt.
     - Be strict but fair. Do NOT fail a run for something you cannot verify
       from stdout or the file list — e.g. the visual correctness of a plot.
       If a required file was produced and is non-empty, assume that

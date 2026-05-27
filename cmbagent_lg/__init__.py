@@ -6,6 +6,7 @@ from cmbagent_lg.persistence import (
     save_trace_id,
     default_work_dir,
     prepare_work_dir,
+    save_deep_research_summary,
 )
 from cmbagent_lg.self_debug.graph import graph as self_debug_graph
 from cmbagent_lg.self_debug.schemas import (
@@ -13,6 +14,7 @@ from cmbagent_lg.self_debug.schemas import (
     ExecutionVerdict,
     StepVerdict,
 )
+from cmbagent_lg.deep_research.graph import graph as deep_research_graph
 
 __all__ = [
     # planning
@@ -26,9 +28,12 @@ __all__ = [
     "EngineerResponse",
     "ExecutionVerdict",
     "StepVerdict",
+    # deep_research
+    "deep_research_graph",
     # persistence
     "save_final_plan",
     "save_trace_id",
     "default_work_dir",
     "prepare_work_dir",
+    "save_deep_research_summary",
 ]

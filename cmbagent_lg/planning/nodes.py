@@ -29,10 +29,10 @@ from cmbagent_lg.llms import proposer, critic, formatter
 from cmbagent_lg.planning.prompts import (
     planner_instructions,
     plan_reviewer_instructions,
-    schema_field_brief,
 )
 from cmbagent_lg.planning.schemas import Plan, Review, Step
 from cmbagent_lg.planning.state import PlanState
+from cmbagent_lg.prompt_utils import schema_field_brief
 from cmbagent_lg.timing import timed_node
 
 
@@ -171,24 +171,6 @@ def plan_reviewer(state: PlanState, runtime: Runtime[PlanContext]) -> PlanState:
 # ── formatters ──────────────────────────────────────────────────────────
 
 
-def _make_formatter(schema, input_field: str, output_field: str, tag: str):
-    sys = SystemMessage(
-        f"You are a formatter. Convert the user's text into a {schema.__name__} "
-        f"object. Preserve all substantive content. Do not invent new facts. "
-        f"If a field is not explicitly stated, infer it conservatively from context."
-    )
-
-    def node(state: PlanState, runtime: Runtime[PlanContext]) -> PlanState:
-        structured = _formatter().with_structured_output(schema)
-        obj = structured.invoke(
-            [sys, HumanMessage(state[input_field])], config={"tags": [tag]}
-        )
-        return {output_field: obj}
-
-    node.__name__ = tag
-    return node
-
-
 @timed_node("format_plan")
 def format_plan(state: PlanState, runtime: Runtime[PlanContext]) -> PlanState:
     """Like `_make_formatter(Plan, …)` but builds the model dynamically so
@@ -213,20 +195,24 @@ def format_plan(state: PlanState, runtime: Runtime[PlanContext]) -> PlanState:
     return {"current_plan": Plan(**dyn.model_dump())}
 
 
-_format_review_inner = _make_formatter(
-    Review, "raw_review", "current_review", "format_review"
-)
-
-
 @timed_node("format_review")
 def format_review(state: PlanState, runtime: Runtime[PlanContext]) -> PlanState:
-    """Format the review, then snapshot (plan, review) into the history."""
-    out = _format_review_inner(state, runtime)
-    review = out["current_review"]
+    """Format the review via `with_structured_output(Review)`, then snapshot
+    (plan, review) into `history` so every subsequent planner pass sees the
+    full prior transcript (not just the latest review)."""
+    sys = SystemMessage(
+        "You are a formatter. Convert the user's text into a Review object. "
+        "Preserve all substantive content. Do not invent new facts. "
+        "If a field is not explicitly stated, infer it conservatively from context."
+    )
+    structured = _formatter().with_structured_output(Review)
+    review: Review = structured.invoke(
+        [sys, HumanMessage(state["raw_review"])],
+        config={"tags": ["format_review"]},
+    )
     history = list(state.get("history", []))
     history.append((state["current_plan"], review))
-    out["history"] = history
-    return out
+    return {"current_review": review, "history": history}
 
 
 # ── router ──────────────────────────────────────────────────────────────

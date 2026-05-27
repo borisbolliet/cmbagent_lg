@@ -1,26 +1,17 @@
 """Prompt loaders for the self_debug loop. Same shape as planning/prompts.py."""
 
-from importlib import resources
 from typing import List
-import yaml
 
 from cmbagent_lg.context import PlanContext
 from cmbagent_lg.planning.schemas import Step
+from cmbagent_lg.prompt_utils import SafeDict, load_yaml
 
 
-class _SafeDict(dict):
-    def __missing__(self, key):
-        return ""
-
-
-def _load_yaml(name: str) -> dict:
-    text = resources.files("cmbagent_lg.self_debug.templates").joinpath(name).read_text()
-    return yaml.safe_load(text)
-
-
-ENGINEER_YAML = _load_yaml("engineer.yaml")
-EVALUATOR_YAML = _load_yaml("evaluator.yaml")
-STEP_EVALUATOR_YAML = _load_yaml("step_evaluator.yaml")
+_TEMPLATES = "cmbagent_lg.self_debug.templates"
+ENGINEER_YAML = load_yaml(_TEMPLATES, "engineer.yaml")
+EVALUATOR_YAML = load_yaml(_TEMPLATES, "evaluator.yaml")
+STEP_EVALUATOR_YAML = load_yaml(_TEMPLATES, "step_evaluator.yaml")
+ESCALATION_YAML = load_yaml(_TEMPLATES, "escalation.yaml")
 
 
 _TRUNCATE_HEAD = 1500
@@ -117,16 +108,18 @@ def engineer_instructions(
     ctx: PlanContext,
     step: Step,
     retry_context: str,
+    previous_steps_execution_summary: str = "",
 ) -> str:
     return ENGINEER_YAML["instructions"].format_map(
-        _SafeDict(
-            improved_main_task=ctx.improved_main_task,
+        SafeDict(
+            main_task=ctx.main_task,
             engineer_append_instructions=ctx.engineer_append_instructions,
             hardware_constraints=ctx.hardware_constraints,
             code_execution_timeout=step.code_execution_timeout or ctx.code_execution_timeout,
             current_sub_task=step.sub_task,
             current_instructions="\n".join(f"- {b}" for b in step.bullet_points),
             retry_context=retry_context,
+            previous_steps_execution_summary=previous_steps_execution_summary,
         )
     )
 
@@ -141,7 +134,7 @@ def evaluator_instructions(
     timed_out: bool,
 ) -> str:
     return EVALUATOR_YAML["instructions"].format_map(
-        _SafeDict(
+        SafeDict(
             evaluator_append_instructions=ctx.evaluator_append_instructions,
             code_execution_timeout=step.code_execution_timeout or ctx.code_execution_timeout,
             current_sub_task=step.sub_task,
@@ -168,6 +161,25 @@ def _render_step_history(step_feedback_history: List[str]) -> str:
     return "\n".join(step_feedback_history)
 
 
+def escalation_instructions(
+    ctx: PlanContext,
+    step: Step,
+    code_path: str,
+    stderr: str,
+    reason: str,
+) -> str:
+    """Prompt for the Claude Agent SDK escalation agent."""
+    return ESCALATION_YAML["instructions"].format_map(
+        SafeDict(
+            escalation_append_instructions=ctx.escalation_append_instructions,
+            current_sub_task=step.sub_task,
+            code_path=code_path,
+            stderr=_head_tail(stderr),
+            reason=reason,
+        )
+    )
+
+
 def step_evaluator_instructions(
     ctx: PlanContext,
     step: Step,
@@ -176,7 +188,7 @@ def step_evaluator_instructions(
     step_feedback_history: List[str],
 ) -> str:
     return STEP_EVALUATOR_YAML["instructions"].format_map(
-        _SafeDict(
+        SafeDict(
             evaluator_append_instructions=ctx.evaluator_append_instructions,
             current_sub_task=step.sub_task,
             current_instructions="\n".join(f"- {b}" for b in step.bullet_points),

@@ -5,21 +5,28 @@ instructions: |
     You judge whether the engineer's code RAN SUCCESSFULLY, not whether the
     sub-task goal was achieved.
 
-    - `status="success"` means the script exited with returncode 0, no
-      exception traceback in stderr, and did not time out.
-    - `status="failure"` means the script crashed, raised an unhandled
-      exception, was killed by the timeout, or returned a non-zero exit code.
+    - `status="success"` means the script ran cleanly: no exception, no error.
+    - `status="failure"` means something went wrong — an unhandled exception
+      or traceback, a non-zero exit code, a timeout, OR an error the script
+      *caught and printed* (e.g. stdout contains "An error occurred: ..." or
+      a "Traceback"). A caught-and-printed error still counts as a failure.
 
     On `failure`:
     - Set `error_summary` to a one-paragraph description of what went wrong.
-      Quote the relevant traceback line if helpful. Do NOT copy the entire
-      traceback — just the key signal.
+      Quote the key error line if helpful. Do NOT copy the entire traceback.
     - Set `fix_suggestion` to concrete, actionable guidance for the engineer's
-      next attempt (e.g. "use np.vectorize instead of the python loop to fit in
-      {code_execution_timeout}s", or "scipy.special.gosper does not exist; use
-      sympy.combinatorics instead").
+      next attempt.
+    - Set `failure_kind` — classify the ROOT CAUSE:
+        * `missing_module` — a required package is not installed
+          (`ModuleNotFoundError`, "No module named ...").
+        * `renamed_api` — a function/class/attribute was renamed, moved, or
+          removed from a package that *is* installed (`ImportError: cannot
+          import name ...`, `AttributeError: module ... has no attribute ...`,
+          a deprecated/removed API). Judge by the error meaning, not just its
+          wording — a caught error printed to stdout still counts.
+        * `other` — anything else (logic bug, bad value, timeout, etc.).
 
-    On `success`: leave `error_summary` and `fix_suggestion` as null.
+    On `success`: leave `error_summary`, `fix_suggestion`, `failure_kind` null.
 
     {evaluator_append_instructions}
 

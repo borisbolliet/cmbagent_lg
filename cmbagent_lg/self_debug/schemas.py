@@ -39,8 +39,15 @@ class ExecutionVerdict(BaseModel):
     the last subprocess RAN cleanly, not whether the step goal was met."""
 
     status: Literal["success", "failure"] = Field(
-        description="`success` if the script ran cleanly (returncode 0, no traceback, "
-        "no timeout); `failure` otherwise."
+        description="`success` if the script ran cleanly (no exception, no error — "
+        "including caught-and-printed errors); `failure` otherwise."
+    )
+    failure_kind: Optional[Literal["missing_module", "renamed_api", "other"]] = Field(
+        default=None,
+        description="On failure, classify the root cause: `missing_module` (a "
+        "package is not installed), `renamed_api` (a function/attribute was "
+        "renamed/moved/removed from an installed package), or `other` (logic "
+        "bug, bad value, timeout, …). Null on success. Drives escalation.",
     )
     error_summary: Optional[str] = Field(
         default=None,

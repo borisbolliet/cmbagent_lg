@@ -1,19 +1,21 @@
 """Graph state for the self_debug loop.
 
-Flow:
+Flow — two gates plus an opt-in escape hatch (see `self_debug/graph.py`):
 
-    engineer ─► format_engineer ─► executor ─► evaluator
-                                                  │
-                                       ┌──────────┴──────────┐
-                                       ▼                     ▼
-                                   engineer                  END
-                              (failure, attempts left)
+    engineer ─► format_engineer ─► executor ─► execution_evaluator
+        ▲                                              │
+        │       code SUCCESS ──────────────────────────┼──► step_evaluator
+        │                                              │           │
+        │       code FAILURE → engineer (retry/END)    │           ├── goal MET → END
+        │                                              │           └── goal MISS → engineer
+        │       escalatable failure (opt-in)           │
+        └────── escalation ──► executor ◄──────────────┘
 
 `raw_engineer` is the proposer's free-form prose; `current_code` is the
 formatter's structured output. `error_history` accumulates one summary per
-failed attempt so the engineer sees the full debug trail on each retry
-(cmbagent's `error_history` pattern — supports strategic pivots on later
-attempts instead of repeating fixes that already failed).
+code-execution failure; `step_feedback_history` accumulates one per goal-miss
+so each evaluator sees its own prior reasoning (cmbagent's `error_history`
+pattern — supports strategic pivots on later attempts).
 """
 
 import operator
@@ -39,6 +41,10 @@ class DebugState(TypedDict, total=False):
 
     # Retry budget
     attempts: int  # bumped by the engineer node at the start of each attempt
+    # Escalation is one-shot per step: set True once the escalation node has
+    # run, so the router won't escalate the same step twice.
+    escalated: bool
+    escalation_reason: Optional[str]
 
     # Engineer
     raw_engineer: str
@@ -74,3 +80,9 @@ class DebugState(TypedDict, total=False):
     work_dir: Optional[str]
     # appended per node pass via @timed_node; concatenated by operator.add
     node_elapsed_s: Annotated[List[NodeTiming], operator.add]
+    # Set by `deep_research` when running this step as part of a multi-step
+    # plan: per-step blocks of prior steps' code+output + a workspace file
+    # manifest. The engineer node injects it into its system prompt so step N
+    # can reference / import step N-1's outputs. Empty (or absent) for
+    # standalone self_debug runs.
+    previous_steps_execution_summary: Optional[str]

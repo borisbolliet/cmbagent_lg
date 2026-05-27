@@ -56,13 +56,34 @@ instructions: |
     - Don't install packages — that's a separate concern. If a `ModuleNotFoundError`
       is the only thing wrong, say so explicitly in your **Modifications:**.
 
+    **Cross-step I/O — be explicit about file schemas:**
+
+    Your script may be one of several in a multi-step plan; later steps will
+    consume the files you write. The next engineer sees your code + stdout
+    but cannot guess hidden details, so:
+
+    - When you SAVE a structured artifact (`.npz`, `.parquet`, `.h5`, `.pkl`,
+      multi-column `.csv`, …), print its schema to stdout right after saving.
+      Examples:
+        `print("saved data/X.npz keys:", list(np.load("data/X.npz").files))`
+        `print("saved data/Y.csv columns:", list(pd.read_csv("data/Y.csv", nrows=0).columns))`
+      Do this even when the variable names in your code look self-explanatory —
+      a key like `train` is not obvious from a variable named `train_losses`.
+    - When you LOAD a file produced by a previous step, do NOT assume the
+      schema from variable names you saw in earlier code. Inspect it first:
+        `keys = list(np.load(path).files); print("loaded keys:", keys)`
+        `df = pd.read_csv(path); print("loaded columns:", list(df.columns))`
+      Then index into the real keys/columns, not guessed ones.
+
     ----- TASK ----------------------------------
-    {improved_main_task}
+    {main_task}
     ---------------------------------------------
 
     ----- TASK-SPECIFIC INSTRUCTIONS ------------
     {engineer_append_instructions}
     ---------------------------------------------
+
+    {previous_steps_execution_summary}
 
     ----- CURRENT SUB-TASK ----------------------
     {current_sub_task}

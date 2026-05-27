@@ -1,6 +1,6 @@
 """Run-scoped variables (LangGraph `context_schema`).
 
-These are the values the cmbagent YAML templates reference as `{improved_main_task}`,
+These are the values the cmbagent YAML templates reference as `{main_task}`,
 `{hardware_constraints}`, etc. We pass them at `graph.invoke` time, not as graph state,
 so a single compiled graph generalizes across tasks.
 """
@@ -23,7 +23,7 @@ DEFAULT_AVAILABLE_AGENTS: List[Tuple[str, str]] = [
 
 @dataclass
 class PlanContext:
-    improved_main_task: str
+    main_task: str
     hardware_constraints: str = "Standard laptop. Single CPU. No GPU."
     code_execution_timeout: int | None = 120
     maximum_number_of_steps_in_plan: int = 5
@@ -44,3 +44,18 @@ class PlanContext:
     max_n_attempts: int = 3
     engineer_append_instructions: str = ""
     evaluator_append_instructions: str = ""
+
+    # ── escalation (self_debug escape hatch) ─────────────────────────────
+    # When the strict loop hits a failure it structurally can't fix (missing
+    # package, renamed/removed API), escalate once to a free-form Claude
+    # Agent SDK agent that can web-search the fix. Opt-in: it runs Claude
+    # models (the one Anthropic dependency — needs ANTHROPIC_API_KEY) and is
+    # bounded by the budget/turn caps below.
+    enable_escalation: bool = False
+    escalation_max_budget_usd: float = 0.50
+    escalation_max_turns: int = 12
+    escalation_append_instructions: str = ""
+    # Which Claude model the escalation agent uses. None = SDK default
+    # (currently Sonnet — capable but expensive). Set to a Haiku for ~5-10x
+    # cheaper runs; reach for Sonnet/Opus only for subtler migrations.
+    escalation_model: str | None = None
