@@ -20,6 +20,7 @@ Non-engineer steps halt the plan with a clear outcome.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -125,6 +126,15 @@ def run_step(
     plan = state["plan"]
     n = state.get("step_index", 1)
     step = plan.sub_tasks[n - 1]
+
+    # Step banner — the interleaved [time]/[escalation] lines from inside
+    # the nested self_debug run otherwise blur step boundaries together.
+    bar = "━" * 70
+    print(
+        f"\n{bar}\n▶ STEP {n}/{len(plan.sub_tasks)}: {step.sub_task}\n{bar}",
+        file=sys.stderr,
+        flush=True,
+    )
 
     # v1 only supports engineer steps. Halt cleanly on anything else.
     if step.sub_task_agent != "engineer":
