@@ -1,0 +1,17 @@
+// ReAct loop — two nodes + one conditional edge
+digraph React {
+  rankdir = LR;
+  bgcolor = "transparent";
+  node [fontname = "Helvetica", fontsize = 16, penwidth = 1.6];
+  edge [fontname = "Helvetica", fontsize = 13, penwidth = 1.4, arrowsize = 0.9];
+
+  START [shape = circle, label = "START", style = "filled", fillcolor = "#dee2e6", width = 0.6];
+  agent [shape = box, label = "agent\n(LLM call)", style = "filled,rounded", fillcolor = "#dbe7ff"];
+  tools [shape = box, label = "tools\nlookup_population", style = "filled,rounded", fillcolor = "#fff3bf"];
+  END   [shape = circle, label = "END", style = "filled", fillcolor = "#dee2e6", width = 0.6];
+
+  START -> agent;
+  agent -> tools [label = "  tool_calls?  ", labeldistance = 2.0];
+  tools -> agent [label = "  observation  ", constraint = false];
+  agent -> END   [label = "  no tool_calls  "];
+}

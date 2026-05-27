@@ -37,19 +37,7 @@ Modern tool-calling models fold the *think* into the *act* step (the tool call m
 
 # The loop, in one picture
 
-```
-            ┌──────────┐
-  START ───►│  agent   │──┐
-            │   (LLM)  │  │  tool_calls?
-            └────▲─────┘  │
-                 │        ▼
-       observation    ┌─────────┐
-                 │    │  tools  │
-                 └────│         │
-                      └─────────┘
-
-           no tool_calls  →  END
-```
+![w:900 center](react_loop.svg)
 
 LangGraph: **two nodes + one conditional edge.** The conditional edge *is* the loop.
 
@@ -181,21 +169,11 @@ The cross-step carryover is the whole point.
 
 # `deep_research` demo
 
-**Task** (4-sentence prompt): generate noisy `sin(x)`, save to disk, load it back, plot it.
+**Task**: generate noisy `sin(x)`, save it, then load and plot it.
 
-```
-   planner  ─►  [Plan: 2 sub-tasks]
-                       │
-                       ▼
-           Step 1 · self_debug subgraph    →   data/sinusoidal_data.npz
-                       │
-                       │  previous_steps_execution_summary
-                       │  (code + stdout + file manifest)
-                       ▼
-           Step 2 · self_debug subgraph    →   data/plot.png
-```
+![w:700 center](deep_research.svg)
 
-Both steps OK on first attempt · ~17 s total · `examples/run_deep_research_simple.py`.
+Both steps OK on first attempt · ~17 s · `examples/run_deep_research_simple.py`.
 
 ---
 

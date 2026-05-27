@@ -1,0 +1,38 @@
+// deep_research — planner + multi-step loop with cross-step carryover
+digraph DeepResearch {
+  rankdir = TB;
+  bgcolor = "transparent";
+  node [fontname = "Helvetica", fontsize = 15, penwidth = 1.6];
+  edge [fontname = "Helvetica", fontsize = 12, penwidth = 1.4, arrowsize = 0.9];
+
+  planner [shape = box, label = "planner ↔ reviewer", style = "filled,rounded", fillcolor = "#dbe7ff"];
+  plan    [shape = box, label = "Plan  ·  N sub-tasks", style = "filled,rounded", fillcolor = "#d3f9d8"];
+
+  subgraph cluster_step1 {
+    label = "Step 1  ·  self_debug subgraph";
+    style = "rounded,filled";
+    fillcolor = "#fff8e1";
+    fontsize = 13;
+    s1_engineer  [shape = box, label = "engineer",  style = "filled,rounded", fillcolor = "#ffffff"];
+    s1_executor  [shape = box, label = "executor",  style = "filled,rounded", fillcolor = "#ffffff"];
+    s1_exec_eval [shape = box, label = "exec_eval", style = "filled,rounded", fillcolor = "#ffffff"];
+    s1_step_eval [shape = box, label = "step_eval", style = "filled,rounded", fillcolor = "#ffffff"];
+    s1_engineer -> s1_executor -> s1_exec_eval -> s1_step_eval;
+  }
+
+  subgraph cluster_step2 {
+    label = "Step 2  ·  self_debug subgraph";
+    style = "rounded,filled";
+    fillcolor = "#fff8e1";
+    fontsize = 13;
+    s2_engineer  [shape = box, label = "engineer",  style = "filled,rounded", fillcolor = "#ffffff"];
+    s2_executor  [shape = box, label = "executor",  style = "filled,rounded", fillcolor = "#ffffff"];
+    s2_exec_eval [shape = box, label = "exec_eval", style = "filled,rounded", fillcolor = "#ffffff"];
+    s2_step_eval [shape = box, label = "step_eval", style = "filled,rounded", fillcolor = "#ffffff"];
+    s2_engineer -> s2_executor -> s2_exec_eval -> s2_step_eval;
+  }
+
+  planner -> plan;
+  plan -> s1_engineer;
+  s1_step_eval -> s2_engineer [label = "  previous_steps_execution_summary  \n  (code + stdout + file manifest)  ", fontsize = 11];
+}
