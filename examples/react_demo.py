@@ -1,0 +1,168 @@
+"""ReAct demo for teaching the loop AND the effect of `temperature`.
+
+A from-scratch LangGraph ReAct agent — two nodes (`agent`, `tools`) and a
+conditional edge — so the loop is visible in the graph itself, not hidden
+behind `create_react_agent`.
+
+Why this question? "What is the population of France?" is something the
+model has memorized, so at high temperature it's tempted to *skip* the
+lookup and answer from priors. That makes the temperature knob actually
+do something visible: tool-call rate drops as T rises.
+
+Usage:
+  python examples/react_demo.py --temperature 0.0 --repeat 10
+  python examples/react_demo.py --temperature 1.0 --repeat 10
+  python examples/react_demo.py --show-trace             # full trace of one run
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+from typing import Annotated, TypedDict
+
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
+
+from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.tools import tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+
+# ── the one tool ─────────────────────────────────────────────────────────
+# Numbers are deliberately off canonical so we can also tell, in
+# principle, whether the final answer came from the tool or from priors.
+
+POPULATIONS = {
+    "France": 68_000_000,
+    "Germany": 84_000_000,
+    "Italy": 59_000_000,
+}
+
+
+@tool
+def lookup_population(country: str) -> str:
+    """Look up a country's population in a small internal reference table."""
+    if country in POPULATIONS:
+        return f"The population of {country} is {POPULATIONS[country]:,}."
+    return f"No data for {country}."
+
+
+# ── graph state ──────────────────────────────────────────────────────────
+
+class State(TypedDict):
+    messages: Annotated[list[AnyMessage], add_messages]
+
+
+# ── graph builder ────────────────────────────────────────────────────────
+
+def make_graph(temperature: float):
+    model = ChatGoogleGenerativeAI(
+        model=os.environ.get("REACT_MODEL", "gemini-3.1-flash-lite"),
+        temperature=temperature,
+        thinking_level="low",
+        google_api_key=os.environ["GOOGLE_API_KEY"],
+    ).bind_tools([lookup_population])
+
+    def agent_node(state: State):
+        return {"messages": [model.invoke(state["messages"])]}
+
+    def tool_node(state: State):
+        last = state["messages"][-1]
+        outs = []
+        for tc in last.tool_calls:
+            result = lookup_population.invoke(tc["args"])
+            outs.append(ToolMessage(content=result, tool_call_id=tc["id"]))
+        return {"messages": outs}
+
+    def should_continue(state: State):
+        last = state["messages"][-1]
+        return "tools" if getattr(last, "tool_calls", None) else END
+
+    g = StateGraph(State)
+    g.add_node("agent", agent_node)
+    g.add_node("tools", tool_node)
+    g.add_edge(START, "agent")
+    g.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+    g.add_edge("tools", "agent")
+    return g.compile()
+
+
+# ── runner ───────────────────────────────────────────────────────────────
+
+def _flatten_content(c) -> str:
+    # Gemini returns content as either a string or a list of part-dicts.
+    if isinstance(c, str):
+        return c
+    if isinstance(c, list):
+        return "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in c)
+    return str(c)
+
+
+SYSTEM_PROMPT = (
+    "You are a knowledgeable assistant. You have access to a population "
+    "lookup tool, but you don't have to use it — if you already know the "
+    "answer with reasonable confidence, just answer directly. Only call "
+    "the tool when you're genuinely uncertain."
+)
+
+
+def run_once(graph, question: str) -> dict:
+    final = graph.invoke({"messages": [
+        SystemMessage(content=SYSTEM_PROMPT),
+        HumanMessage(content=question),
+    ]})
+    msgs = final["messages"]
+    tool_called = any(getattr(m, "tool_calls", None) for m in msgs)
+    final_text = _flatten_content(getattr(msgs[-1], "content", ""))
+    return {"tool_called": tool_called, "final_text": final_text, "messages": msgs}
+
+
+def print_trace(messages):
+    """Pretty-print the full ReAct trace of one run — for live demos."""
+    for i, m in enumerate(messages):
+        role = m.__class__.__name__.replace("Message", "")
+        body = _flatten_content(getattr(m, "content", "")).strip()
+        tcs = getattr(m, "tool_calls", None) or []
+        print(f"\n[{i}] {role}")
+        if body:
+            print(f"    {body}")
+        for tc in tcs:
+            print(f"    → tool_call: {tc['name']}({tc['args']})")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--temperature", type=float, default=0.0)
+    ap.add_argument("--repeat", type=int, default=5)
+    ap.add_argument("--question", default="What is the population of France?")
+    ap.add_argument("--show-trace", action="store_true",
+                    help="Print one full message trace then exit.")
+    args = ap.parse_args()
+
+    graph = make_graph(args.temperature)
+
+    if args.show_trace:
+        print(f"\n=== Trace (T={args.temperature}) ===\nQ: {args.question}")
+        out = run_once(graph, args.question)
+        print_trace(out["messages"])
+        return
+
+    print(f"\n=== ReAct demo — T={args.temperature}, n={args.repeat} ===")
+    print(f"Q: {args.question}\n")
+
+    tool_uses = 0
+    for i in range(args.repeat):
+        out = run_once(graph, args.question)
+        tool_uses += int(out["tool_called"])
+        flag = "TOOL" if out["tool_called"] else "SKIP"
+        snippet = out["final_text"].replace("\n", " ").strip()[:120]
+        print(f"  run {i+1:>2}  [{flag}]  {snippet}")
+
+    print(f"\nTool-call rate: {tool_uses}/{args.repeat} = {tool_uses/args.repeat:.0%}")
+
+
+if __name__ == "__main__":
+    main()
