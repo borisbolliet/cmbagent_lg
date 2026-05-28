@@ -13,12 +13,16 @@ Usage:
   python examples/react_demo.py --temperature 0.0 --repeat 10
   python examples/react_demo.py --temperature 1.0 --repeat 10
   python examples/react_demo.py --show-trace             # full trace of one run
+
+Optional first positional arg is a work_dir (used as the Langfuse session id
+and where the trace_id file is written); defaults to a timestamped path.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import sys
 from typing import Annotated, TypedDict
 
 from dotenv import load_dotenv
@@ -31,12 +35,16 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
+from cmbagent_lg.prompt_utils import flatten_content as _flatten_content
+
+from _common import attach_langfuse, print_trace_info, resolve_work_dir
+
 # ── the one tool ─────────────────────────────────────────────────────────
 # Numbers are deliberately off canonical so we can also tell, in
 # principle, whether the final answer came from the tool or from priors.
 
 POPULATIONS = {
-    "France": 68_000_000,
+    "France": 67_000_000,
     "Germany": 84_000_000,
     "Italy": 59_000_000,
 }
@@ -92,15 +100,6 @@ def make_graph(temperature: float):
 
 # ── runner ───────────────────────────────────────────────────────────────
 
-def _flatten_content(c) -> str:
-    # Gemini returns content as either a string or a list of part-dicts.
-    if isinstance(c, str):
-        return c
-    if isinstance(c, list):
-        return "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in c)
-    return str(c)
-
-
 SYSTEM_PROMPT = (
     "You are a knowledgeable assistant. You have access to a population "
     "lookup tool, but you don't have to use it — if you already know the "
@@ -109,11 +108,14 @@ SYSTEM_PROMPT = (
 )
 
 
-def run_once(graph, question: str) -> dict:
-    final = graph.invoke({"messages": [
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=question),
-    ]})
+def run_once(graph, question: str, config: dict | None = None) -> dict:
+    final = graph.invoke(
+        {"messages": [
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=question),
+        ]},
+        config=config,
+    )
     msgs = final["messages"]
     tool_called = any(getattr(m, "tool_calls", None) for m in msgs)
     final_text = _flatten_content(getattr(msgs[-1], "content", ""))
@@ -135,6 +137,8 @@ def print_trace(messages):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("work_dir", nargs="?", default=None,
+                    help="Optional work_dir (used as Langfuse session id).")
     ap.add_argument("--temperature", type=float, default=0.0)
     ap.add_argument("--repeat", type=int, default=5)
     ap.add_argument("--question", default="What is the population of France?")
@@ -142,12 +146,29 @@ def main():
                     help="Print one full message trace then exit.")
     args = ap.parse_args()
 
+    # ── workdir + langfuse ───────────────────────────────────────────────
+    fake_argv = [sys.argv[0]] + ([args.work_dir] if args.work_dir else [])
+    work_dir = resolve_work_dir(fake_argv)
+    handler, callbacks = attach_langfuse()
+
+    tags = ["react_demo", f"T={args.temperature}", work_dir.name]
+    base_metadata = {"langfuse_session_id": work_dir.name, "langfuse_tags": tags}
+
+    def make_config(label: str) -> dict:
+        return {
+            "callbacks": callbacks,
+            "run_name": f"react_demo · T={args.temperature} · {label}",
+            "tags": tags,
+            "metadata": base_metadata,
+        }
+
     graph = make_graph(args.temperature)
 
     if args.show_trace:
         print(f"\n=== Trace (T={args.temperature}) ===\nQ: {args.question}")
-        out = run_once(graph, args.question)
+        out = run_once(graph, args.question, config=make_config("show-trace"))
         print_trace(out["messages"])
+        print_trace_info(handler, work_dir)
         return
 
     print(f"\n=== ReAct demo — T={args.temperature}, n={args.repeat} ===")
@@ -155,13 +176,16 @@ def main():
 
     tool_uses = 0
     for i in range(args.repeat):
-        out = run_once(graph, args.question)
+        out = run_once(
+            graph, args.question, config=make_config(f"run {i+1}/{args.repeat}")
+        )
         tool_uses += int(out["tool_called"])
         flag = "TOOL" if out["tool_called"] else "SKIP"
         snippet = out["final_text"].replace("\n", " ").strip()[:120]
         print(f"  run {i+1:>2}  [{flag}]  {snippet}")
 
     print(f"\nTool-call rate: {tool_uses}/{args.repeat} = {tool_uses/args.repeat:.0%}")
+    print_trace_info(handler, work_dir)
 
 
 if __name__ == "__main__":

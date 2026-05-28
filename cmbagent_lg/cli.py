@@ -79,8 +79,13 @@ _KNOWN_AGENT_TAGS = (
     "execution_evaluator",
     "step_evaluator",
     "escalation",
+    # researcher module
+    "researcher",
+    "researcher_step_evaluator",
     # deep_research (outer orchestrator)
     "run_step",
+    # teaching demo
+    "react_demo",
 )
 
 

@@ -45,6 +45,9 @@ class PlanContext:
     engineer_append_instructions: str = ""
     evaluator_append_instructions: str = ""
 
+    # ── researcher module (prose steps inside deep_research) ─────────────
+    researcher_append_instructions: str = ""
+
     # ── escalation (self_debug escape hatch) ─────────────────────────────
     # When the strict loop hits a failure it structurally can't fix (missing
     # package, renamed/removed API), escalate once to a free-form Claude

@@ -39,3 +39,17 @@ def schema_field_brief(schema) -> str:
             t = t[len("<class '") : -len("'>")]
         lines.append(f"- {name} ({t}): {field.description or ''}")
     return "\n".join(lines)
+
+
+def flatten_content(c) -> str:
+    """Coerce a LangChain message `.content` to a plain string.
+
+    Gemini (and some other models) return content as either a string or a list
+    of part-dicts (e.g. `[{"type": "text", "text": "..."}, ...]`). When we want
+    the raw text — to write to a file, print, hash — we need one string.
+    """
+    if isinstance(c, str):
+        return c
+    if isinstance(c, list):
+        return "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in c)
+    return str(c)
