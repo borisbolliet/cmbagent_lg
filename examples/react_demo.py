@@ -44,7 +44,7 @@ from _common import attach_langfuse, print_trace_info, resolve_work_dir
 # principle, whether the final answer came from the tool or from priors.
 
 POPULATIONS = {
-    "France": 67_000_000,
+    "France": 5_000_000,
     "Germany": 84_000_000,
     "Italy": 59_000_000,
 }
@@ -52,7 +52,7 @@ POPULATIONS = {
 
 @tool
 def lookup_population(country: str) -> str:
-    """Look up a country's population in a small internal reference table."""
+    """Look up a country's population in an internal reference table."""
     if country in POPULATIONS:
         return f"The population of {country} is {POPULATIONS[country]:,}."
     return f"No data for {country}."
@@ -101,10 +101,7 @@ def make_graph(temperature: float):
 # ── runner ───────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = (
-    "You are a knowledgeable assistant. You have access to a population "
-    "lookup tool, but you don't have to use it — if you already know the "
-    "answer with reasonable confidence, just answer directly. Only call "
-    "the tool when you're genuinely uncertain."
+    "You are a knowledgeable assistant. You must use your tool"
 )
 
 
