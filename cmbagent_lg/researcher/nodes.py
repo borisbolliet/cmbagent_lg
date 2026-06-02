@@ -24,6 +24,7 @@ from langgraph.runtime import Runtime
 from cmbagent_lg.context import PlanContext
 from cmbagent_lg.llms import chat_model
 from cmbagent_lg.prompt_utils import flatten_content, schema_field_brief
+from cmbagent_lg.vlm import collect_images, with_images
 from cmbagent_lg.researcher.prompts import (
     render_retry_context,
     researcher_instructions,
@@ -96,8 +97,21 @@ def researcher(state: ResearcherState, runtime: Runtime[PlanContext]) -> Researc
         "bullet-point requirement. Output only the report body — no preamble."
     )
 
+    # Multimodal grounding: attach the generated plots so the report is written
+    # against the actual figures, not inferred from code/stdout alone.
+    user_content = user
+    if getattr(ctx, "vlm_enabled", False):
+        images = collect_images(state.get("work_dir"), getattr(ctx, "vlm_max_images", 8))
+        if images:
+            user_content = with_images(
+                user + " The figures produced by the analysis are attached below; "
+                "read quantitative trends directly from them and make sure your "
+                "report is consistent with what the plots show.",
+                images,
+            )
+
     msg = _proposer(runtime.context).invoke(
-        [SystemMessage(system), HumanMessage(user)],
+        [SystemMessage(system), HumanMessage(content=user_content)],
         config={"tags": ["researcher"]},
     )
     report = flatten_content(msg.content).strip()

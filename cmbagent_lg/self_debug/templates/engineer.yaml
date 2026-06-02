@@ -42,7 +42,27 @@ instructions: |
     - For plots: set `rcParams['text.usetex'] = False`. Use `plt.tight_layout()`.
       No `.show()`.
     - Suppress verbose training output (e.g. `verbose=0` for Keras). Keep final
-      metrics. Print key numerical results clearly.
+      metrics.
+
+    **PRINT YOUR RESULTS (not just save them):**
+
+    Downstream agents — including the researcher who writes the final report —
+    see ONLY your stdout, never the contents of the files you save. So every
+    final, interpretable numerical result your analysis produces MUST be printed
+    to stdout in full, not merely written to a `.csv`/`.npz`:
+    - summary/aggregate tables, fitted parameters (with uncertainties), test
+      statistics, metrics, effect sizes, correlations, per-group/per-regime
+      breakdowns — print the actual VALUES.
+    - When printing a pandas DataFrame/Series, disable truncation and use
+      `.to_string()` so nothing is elided, e.g.:
+        `pd.set_option("display.max_rows", None)`
+        `pd.set_option("display.max_columns", None)`
+        `pd.set_option("display.width", 200)`
+        `print(summary.to_string())`
+    - Printing only the column names, the shape, or a `"saved data/…"` line is
+      NOT sufficient — the numbers themselves must appear in stdout.
+    - Do NOT dump huge raw arrays or matrices larger than ~10x10; prefer
+      summarized, human-interpretable statistics.
 
     **Saving output files (plots, data):**
 

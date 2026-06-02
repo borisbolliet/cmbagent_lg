@@ -56,6 +56,14 @@ class PlanContext:
     evaluator_model: str | None = None
     formatter_model: str | None = None
 
+    # ── multimodal grounding (cmbagent_lg.vlm) ───────────────────────────
+    # When True, the researcher (and the engineer step evaluator) are given the
+    # generated plots under `data/` as image content blocks, so they read trends
+    # off the figures instead of inferring them from code + stdout alone. The
+    # role's model must be vision-capable (gemini-*, gpt-4o/gpt-5*, claude-*).
+    vlm_enabled: bool = False
+    vlm_max_images: int = 8
+
     # ── self_debug module ────────────────────────────────────────────────
     # Max engineer attempts per sub-task before giving up. Mirrors
     # cmbagent's `max_n_attempts` (default 3 there too).

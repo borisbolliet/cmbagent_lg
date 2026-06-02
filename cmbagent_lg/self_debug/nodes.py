@@ -40,6 +40,7 @@ from langgraph.runtime import Runtime
 from cmbagent_lg.context import PlanContext
 from cmbagent_lg.llms import chat_model
 from cmbagent_lg.prompt_utils import schema_field_brief
+from cmbagent_lg.vlm import collect_images, with_images
 from cmbagent_lg.self_debug.prompts import (
     engineer_instructions,
     evaluator_instructions,
@@ -444,9 +445,21 @@ def step_evaluator(state: DebugState, runtime: Runtime[PlanContext]) -> DebugSta
         "Judge whether the step goal was achieved and emit a verdict. "
         "Cover these fields:\n\n" + schema_field_brief(StepVerdict)
     )
+    # Multimodal grounding: let the evaluator actually see the plots this step
+    # produced, so it can judge visual correctness (otherwise it's blind to
+    # figure contents and can only go on stdout + the file list).
+    user_content = user
+    if getattr(ctx, "vlm_enabled", False):
+        images = collect_images(state.get("work_dir"), getattr(ctx, "vlm_max_images", 8))
+        if images:
+            user_content = with_images(
+                user + " The figures this step produced are attached; verify they "
+                "actually show what the sub-task requires.",
+                images,
+            )
     structured = _critic(runtime.context).with_structured_output(StepVerdict)
     verdict: StepVerdict = structured.invoke(
-        [SystemMessage(system), HumanMessage(user)],
+        [SystemMessage(system), HumanMessage(content=user_content)],
         config={"tags": ["step_evaluator"]},
     )
 
