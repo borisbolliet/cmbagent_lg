@@ -40,7 +40,6 @@ from langgraph.runtime import Runtime
 from cmbagent_lg.context import PlanContext
 from cmbagent_lg.llms import chat_model
 from cmbagent_lg.prompt_utils import schema_field_brief
-from cmbagent_lg.vlm import collect_images, with_images
 from cmbagent_lg.self_debug.prompts import (
     engineer_instructions,
     evaluator_instructions,
@@ -90,15 +89,18 @@ def engineer(state: DebugState, runtime: Runtime[PlanContext]) -> DebugState:
     last_fix_suggestion = None
     last_step_unmet = None
     last_step_feedback = None
+    last_image_issues = None
+    last_image_suggestions = None
     if attempts > 1:
         prev = state.get("current_code")
         last_code = prev.python_code if prev else None
         last_stdout = state.get("execution_stdout")
         exec_verdict = state.get("current_execution_verdict")
         # Why are we retrying? If the last run's code crashed → code-error
-        # retry. Otherwise the code ran clean and the step_evaluator rejected
-        # it → goal-miss retry. Selecting the mode here avoids showing a
-        # stale step verdict after a code crash.
+        # retry. Otherwise the code ran clean and either the image_reviewer
+        # asked to revise a figure or the step_evaluator rejected the goal →
+        # success-path retry. Selecting the mode here avoids showing a stale
+        # step/image verdict after a code crash.
         if exec_verdict is not None and exec_verdict.status == "failure":
             last_stderr = state.get("execution_stderr")
             last_returncode = state.get("execution_returncode")
@@ -109,6 +111,10 @@ def engineer(state: DebugState, runtime: Runtime[PlanContext]) -> DebugState:
             if step_verdict is not None:
                 last_step_unmet = step_verdict.unmet_requirements
                 last_step_feedback = step_verdict.feedback
+            review = state.get("current_image_review")
+            if review is not None and review.needs_revision:
+                last_image_issues = review.issues
+                last_image_suggestions = review.suggestions
 
     retry_block = render_retry_context(
         attempts=attempts,
@@ -122,6 +128,8 @@ def engineer(state: DebugState, runtime: Runtime[PlanContext]) -> DebugState:
         error_history=error_history,
         last_step_unmet=last_step_unmet,
         last_step_feedback=last_step_feedback,
+        last_image_issues=last_image_issues,
+        last_image_suggestions=last_image_suggestions,
     )
 
     system = engineer_instructions(
@@ -445,21 +453,12 @@ def step_evaluator(state: DebugState, runtime: Runtime[PlanContext]) -> DebugSta
         "Judge whether the step goal was achieved and emit a verdict. "
         "Cover these fields:\n\n" + schema_field_brief(StepVerdict)
     )
-    # Multimodal grounding: let the evaluator actually see the plots this step
-    # produced, so it can judge visual correctness (otherwise it's blind to
-    # figure contents and can only go on stdout + the file list).
-    user_content = user
-    if getattr(ctx, "vlm_enabled", False):
-        images = collect_images(state.get("work_dir"), getattr(ctx, "vlm_max_images", 8))
-        if images:
-            user_content = with_images(
-                user + " The figures this step produced are attached; verify they "
-                "actually show what the sub-task requires.",
-                images,
-            )
+    # Visual correctness of plots is handled separately by the image_reviewer
+    # node (see vlm/reviewer.py); the step_evaluator judges from stdout + the
+    # file list only, per its prompt.
     structured = _critic(runtime.context).with_structured_output(StepVerdict)
     verdict: StepVerdict = structured.invoke(
-        [SystemMessage(system), HumanMessage(content=user_content)],
+        [SystemMessage(system), HumanMessage(user)],
         config={"tags": ["step_evaluator"]},
     )
 
@@ -521,7 +520,9 @@ def route_after_execution_evaluator(
     ctx = runtime.context
     verdict = state["current_execution_verdict"]
     if verdict.status == "success":
-        return "step_evaluator"
+        # Visual review first (if enabled) — it may bounce the plot back to the
+        # engineer before the goal is judged. Otherwise go straight to the goal.
+        return "image_reviewer" if ctx.vlm_enabled else "step_evaluator"
     if (
         ctx.enable_escalation
         and not state.get("escalated", False)

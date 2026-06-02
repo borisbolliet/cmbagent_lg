@@ -37,14 +37,17 @@ def render_retry_context(
     error_history: List[str],
     last_step_unmet: List[str] | None = None,
     last_step_feedback: str | None = None,
+    last_image_issues: List[str] | None = None,
+    last_image_suggestions: List[str] | None = None,
 ) -> str:
     """Block injected into the engineer prompt on retries. Empty on first attempt.
 
     Two retry modes: a **code-error** retry (the script crashed) shows the
-    error trail; a **goal-miss** retry (the script ran clean but the
-    step_evaluator found the sub-task unfulfilled) shows the unmet
-    requirements + reviewer feedback. The caller selects the mode by passing
-    `last_step_*` (goal-miss) or leaving them None (code-error).
+    error trail; a **success-path** retry (the script ran clean but the
+    image_reviewer asked to revise a figure and/or the step_evaluator found the
+    sub-task unfulfilled) shows the figure issues + unmet requirements +
+    reviewer feedback. Code-error mode is selected when all the `last_step_*` /
+    `last_image_*` args are None.
     """
     if attempts <= 1:
         return ""
@@ -68,14 +71,29 @@ def render_retry_context(
             "",
         ]
 
-    goal_miss = bool(last_step_unmet or last_step_feedback)
-    if goal_miss:
+    success_retry = bool(
+        last_step_unmet or last_step_feedback
+        or last_image_issues or last_image_suggestions
+    )
+    if success_retry:
         lines += [
-            "**Outcome:** the code ran cleanly, but the step goal was NOT met.",
+            "**Outcome:** the code ran cleanly, but the output needs revision "
+            "(figure review and/or step goal).",
             "",
         ]
         if last_stdout:
             lines += ["**stdout:**", "```", _head_tail(last_stdout), "```", ""]
+        if last_image_issues or last_image_suggestions:
+            lines.append("**Figure review — the generated plot(s) need revision:**")
+            if last_image_issues:
+                lines.append("Issues:")
+                for i in last_image_issues:
+                    lines.append(f"  - {i}")
+            if last_image_suggestions:
+                lines.append("Suggested fixes:")
+                for s in last_image_suggestions:
+                    lines.append(f"  - {s}")
+            lines.append("")
         if last_step_unmet:
             lines.append("**Unmet requirements:**")
             for r in last_step_unmet:

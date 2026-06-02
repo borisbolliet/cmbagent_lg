@@ -13,6 +13,13 @@ which ChatGoogleGenerativeAI, ChatOpenAI and ChatAnthropic all accept — so it
 works with any modern vision model (gemini-*, gpt-4o/gpt-5*, claude-*).
 """
 
-from cmbagent_lg.vlm.images import collect_images, with_images
+from cmbagent_lg.vlm.images import collect_images, images_from_manifest, with_images
+from cmbagent_lg.vlm.reviewer import image_reviewer, route_after_image_reviewer
 
-__all__ = ["collect_images", "with_images"]
+__all__ = [
+    "collect_images",
+    "images_from_manifest",
+    "with_images",
+    "image_reviewer",
+    "route_after_image_reviewer",
+]

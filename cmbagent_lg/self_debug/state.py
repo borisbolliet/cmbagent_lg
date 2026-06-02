@@ -26,6 +26,7 @@ from cmbagent_lg.self_debug.schemas import (
     EngineerResponse,
     ExecutionVerdict,
     StepVerdict,
+    ImageReview,
 )
 from cmbagent_lg.timing import NodeTiming
 
@@ -68,6 +69,11 @@ class DebugState(TypedDict, total=False):
 
     # step_evaluator — did the run ACHIEVE the sub-task's goal?
     current_step_verdict: StepVerdict
+
+    # image_reviewer — visual review of the figures this step produced, and a
+    # counter bounding the revise-the-plot loop (see vlm/reviewer.py).
+    current_image_review: ImageReview
+    vlm_review_attempts: int
 
     # Accumulated across the loop — one entry per failed attempt.
     # `error_history`         — code-execution failures (execution_evaluator)

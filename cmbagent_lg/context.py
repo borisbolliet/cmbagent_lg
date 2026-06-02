@@ -63,6 +63,12 @@ class PlanContext:
     # role's model must be vision-capable (gemini-*, gpt-4o/gpt-5*, claude-*).
     vlm_enabled: bool = False
     vlm_max_images: int = 8
+    # Model for the image_reviewer node (vision-capable). None → default model.
+    vlm_model: str | None = None
+    # Bounded revise-the-plot loop: how many image-review/revision cycles a
+    # single step may go through before continuing regardless. Mirrors old
+    # cmbagent's `max_vlm_review_attempts`.
+    max_vlm_review_attempts: int = 2
 
     # ── self_debug module ────────────────────────────────────────────────
     # Max engineer attempts per sub-task before giving up. Mirrors

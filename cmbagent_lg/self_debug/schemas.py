@@ -98,3 +98,43 @@ class StepVerdict(BaseModel):
         if self.feedback:
             out += f"\n**Feedback:**\n{self.feedback}\n"
         return out
+
+
+class ImageReview(BaseModel):
+    """Structured output of the `image_reviewer` node — a visual review of the
+    plots a step produced (mirrors cmbagent's `image_reviewer` agent). Drives a
+    bounded revise-the-plot loop back to the engineer."""
+
+    needs_revision: bool = Field(
+        description="True ONLY if a figure has a concrete, fixable defect "
+        "(unreadable/overlapping/cut-off text, missing axis labels or units, "
+        "missing legend when multiple series, wrong/!misleading scale, or it "
+        "doesn't show what the sub-task asked for). False for purely stylistic "
+        "preferences or when the figures are acceptable."
+    )
+    issues: List[str] = Field(
+        default_factory=list,
+        description="When needs_revision: the specific problems, one concrete "
+        "item each (e.g. 'y-axis label is cut off', not 'labels have issues'). "
+        "Empty otherwise.",
+    )
+    suggestions: List[str] = Field(
+        default_factory=list,
+        description="When needs_revision: concrete, actionable plotting fixes "
+        "for the engineer (e.g. 'add plt.tight_layout()', 'set xlabel with "
+        "units'). Empty otherwise.",
+    )
+    summary: str = Field(
+        default="",
+        description="One- or two-sentence summary of the review.",
+    )
+
+    def format(self) -> str:
+        out = f"**Needs revision:** {self.needs_revision}\n"
+        if self.issues:
+            out += "\n**Issues:**\n" + "".join(f"- {i}\n" for i in self.issues)
+        if self.suggestions:
+            out += "\n**Suggestions:**\n" + "".join(f"- {s}\n" for s in self.suggestions)
+        if self.summary:
+            out += f"\n**Summary:** {self.summary}\n"
+        return out

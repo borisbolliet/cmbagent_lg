@@ -14,6 +14,7 @@ from cmbagent_lg.self_debug.schemas import (
     EngineerResponse,
     ExecutionVerdict,
     StepVerdict,
+    ImageReview,
 )
 from cmbagent_lg.researcher.graph import graph as researcher_graph
 from cmbagent_lg.deep_research.graph import graph as deep_research_graph
@@ -30,6 +31,7 @@ __all__ = [
     "EngineerResponse",
     "ExecutionVerdict",
     "StepVerdict",
+    "ImageReview",
     # researcher
     "researcher_graph",
     # deep_research
