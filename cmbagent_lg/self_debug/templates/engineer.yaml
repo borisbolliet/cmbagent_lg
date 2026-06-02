@@ -41,8 +41,19 @@ instructions: |
       print the saved filepath only and save at dpi>=300.
     - For plots: set `rcParams['text.usetex'] = False`. Use `plt.tight_layout()`.
       No `.show()`.
-    - Suppress verbose training output (e.g. `verbose=0` for Keras). Keep final
-      metrics.
+    - Plot quality (a separate reviewer may reject unreadable figures):
+      * Label every axis (include units where appropriate); add a title, and a
+        legend whenever more than one series is shown.
+      * Make sure all labels, titles and tick labels are fully readable — not
+        cut off or overlapping. Rotate tick labels, shorten labels, or enlarge
+        the figure (`figsize=...`) as needed.
+      * Use a log scale for axes whose values span several orders of magnitude.
+      * Avoid `$...$` math in labels unless necessary, and never nested math.
+      * Prefer ONE figure with a few well-chosen subplots over many separate
+        figures — include only the panels needed to convey the result.
+    - Suppress verbose training output (e.g. `verbose=0` for Keras), and don't
+      reprint the same message every iteration of a long loop (print once). Keep
+      final metrics.
 
     **PRINT YOUR RESULTS (not just save them):**
 
