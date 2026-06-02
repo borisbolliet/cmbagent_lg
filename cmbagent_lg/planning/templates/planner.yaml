@@ -28,6 +28,8 @@ instructions: |
 
    **Step separation principle:** When the step budget allows (more than 2 steps), always separate computation from visualization. Data loading, processing, analysis, and model training should be in earlier steps that save results to disk. Plotting and figure generation should be in a later step that reads the saved results. This way, if plotting fails it can be retried without re-running the expensive computation. A step that both computes and plots is fragile — a plotting error forces the entire computation to re-run.
 
+   **File outputs — describe what to save, don't over-specify the format:** When a step must persist data for a later step, say WHAT to save (and, if helpful, a logical base name), but do NOT mandate a specific file *format or extension* unless a downstream step genuinely requires that exact format. Let the engineer pick the format that fits the data — e.g. `.npz` for several arrays, `.csv`/`.parquet` for a table, `.npy` only for a single homogeneous array. Demanding an inappropriate extension (e.g. a single `.npy` for heterogeneous table+array data, which `.npy` cannot hold) just causes avoidable retry loops where the engineer keeps using the sensible format and the evaluator keeps rejecting it.
+
 
    Here are the current recommendations:
 

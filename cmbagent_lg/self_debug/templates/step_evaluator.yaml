@@ -27,6 +27,15 @@ instructions: |
       from stdout or the file list — e.g. the visual correctness of a plot.
       If a required file was produced and is non-empty, assume that
       requirement is met.
+    - File FORMAT and exact FILENAME are not goals in themselves. If the
+      sub-task named a specific file (e.g. `results.npy`) but the run saved the
+      same content under a sensible equivalent (e.g. `results.csv` / `.npz` /
+      `.parquet`), treat the requirement as MET — judge whether the required
+      DATA/RESULTS were produced (a non-empty file of a reasonable type), not
+      whether the extension or name matches exactly. Only treat the exact
+      format/name as required if a LATER step's code must read that precise
+      path, or the task explicitly says the format is essential. Never let a
+      run get stuck retrying purely over a file extension or filename.
 
     {evaluator_append_instructions}
 
