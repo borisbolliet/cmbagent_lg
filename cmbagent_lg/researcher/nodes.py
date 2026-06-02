@@ -14,7 +14,6 @@ attempt (parallel to engineer's `codebase/step_{N}_failure_{I}.py`).
 
 from __future__ import annotations
 
-from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -23,7 +22,7 @@ from langgraph.graph import END
 from langgraph.runtime import Runtime
 
 from cmbagent_lg.context import PlanContext
-from cmbagent_lg.llms import critic, proposer
+from cmbagent_lg.llms import chat_model
 from cmbagent_lg.prompt_utils import flatten_content, schema_field_brief
 from cmbagent_lg.researcher.prompts import (
     render_retry_context,
@@ -35,16 +34,15 @@ from cmbagent_lg.self_debug.schemas import StepVerdict
 from cmbagent_lg.timing import timed_node
 
 
-# Lazy-init: same lru_cache pattern as self_debug/nodes.py so importing the
-# package doesn't construct API clients.
-@lru_cache(maxsize=1)
-def _proposer():
-    return proposer()
+# Per-role chat models from the run context (None → llms._DEFAULT_MODEL).
+# Here the "generator" is the researcher and the "critic" is the evaluator.
+# chat_model caches by (model, role), so this stays lazy.
+def _proposer(ctx: PlanContext):
+    return chat_model(ctx.researcher_model, "generator")
 
 
-@lru_cache(maxsize=1)
-def _critic():
-    return critic()
+def _critic(ctx: PlanContext):
+    return chat_model(ctx.evaluator_model, "critic")
 
 
 def _reports_dir(state: ResearcherState) -> Optional[Path]:
@@ -98,7 +96,7 @@ def researcher(state: ResearcherState, runtime: Runtime[PlanContext]) -> Researc
         "bullet-point requirement. Output only the report body — no preamble."
     )
 
-    msg = _proposer().invoke(
+    msg = _proposer(runtime.context).invoke(
         [SystemMessage(system), HumanMessage(user)],
         config={"tags": ["researcher"]},
     )
@@ -140,7 +138,7 @@ def step_evaluator(
         "Judge whether the researcher's report fulfills the step goal and emit "
         "a verdict. Cover these fields:\n\n" + schema_field_brief(StepVerdict)
     )
-    structured = _critic().with_structured_output(StepVerdict)
+    structured = _critic(runtime.context).with_structured_output(StepVerdict)
     verdict: StepVerdict = structured.invoke(
         [SystemMessage(system), HumanMessage(user)],
         config={"tags": ["researcher_step_evaluator"]},

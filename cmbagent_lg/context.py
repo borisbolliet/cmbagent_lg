@@ -38,6 +38,24 @@ class PlanContext:
         default_factory=lambda: list(DEFAULT_AVAILABLE_AGENTS)
     )
 
+    # ── per-role model overrides ─────────────────────────────────────────
+    # Each None falls back to llms._DEFAULT_MODEL. The provider is inferred
+    # from the model name (gemini-* / gpt-* / o[1-4]* / claude-*), so these can
+    # be passed straight through from a caller's config (e.g. Denario's
+    # params.yaml). The node modules read the field matching their role:
+    #   planner node      -> planner_model        (generator)
+    #   plan_reviewer node -> plan_reviewer_model  (critic)
+    #   engineer node     -> engineer_model        (generator)
+    #   researcher node   -> researcher_model      (generator)
+    #   execution/step evaluators -> evaluator_model (critic)
+    #   all structured-output formatters -> formatter_model
+    planner_model: str | None = None
+    plan_reviewer_model: str | None = None
+    engineer_model: str | None = None
+    researcher_model: str | None = None
+    evaluator_model: str | None = None
+    formatter_model: str | None = None
+
     # ── self_debug module ────────────────────────────────────────────────
     # Max engineer attempts per sub-task before giving up. Mirrors
     # cmbagent's `max_n_attempts` (default 3 there too).

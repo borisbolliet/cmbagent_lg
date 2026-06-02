@@ -25,7 +25,6 @@ sees the full debug trail on retries.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from functools import lru_cache
 from pathlib import Path
 import json
 import subprocess
@@ -39,7 +38,7 @@ from langgraph.graph import END
 from langgraph.runtime import Runtime
 
 from cmbagent_lg.context import PlanContext
-from cmbagent_lg.llms import proposer, critic, formatter
+from cmbagent_lg.llms import chat_model
 from cmbagent_lg.prompt_utils import schema_field_brief
 from cmbagent_lg.self_debug.prompts import (
     engineer_instructions,
@@ -56,22 +55,19 @@ from cmbagent_lg.self_debug.state import DebugState
 from cmbagent_lg.timing import timed_node
 
 
-# Lazy-init: defer constructing the Gemini clients until first use, so merely
-# importing the package (e.g. for the CLI) doesn't build API clients. Same
-# pattern as `planning.nodes`.
-@lru_cache(maxsize=1)
-def _proposer():
-    return proposer()
+# Per-role chat models from the run context (None → llms._DEFAULT_MODEL).
+# Here the "generator" is the engineer and the "critic" is the evaluator.
+# chat_model caches by (model, role), so this stays lazy.
+def _proposer(ctx: PlanContext):
+    return chat_model(ctx.engineer_model, "generator")
 
 
-@lru_cache(maxsize=1)
-def _critic():
-    return critic()
+def _critic(ctx: PlanContext):
+    return chat_model(ctx.evaluator_model, "critic")
 
 
-@lru_cache(maxsize=1)
-def _formatter():
-    return formatter()
+def _formatter(ctx: PlanContext):
+    return chat_model(ctx.formatter_model, "formatter")
 
 
 # ── generators ──────────────────────────────────────────────────────────
@@ -139,7 +135,7 @@ def engineer(state: DebugState, runtime: Runtime[PlanContext]) -> DebugState:
         "extract the structured fields. Make sure your response covers:\n\n"
         + schema_field_brief(EngineerResponse)
     )
-    msg = _proposer().invoke(
+    msg = _proposer(runtime.context).invoke(
         [SystemMessage(system), HumanMessage(user)],
         config={"tags": ["engineer"]},
     )
@@ -149,7 +145,7 @@ def engineer(state: DebugState, runtime: Runtime[PlanContext]) -> DebugState:
 @timed_node("format_engineer")
 def format_engineer(state: DebugState, runtime: Runtime[PlanContext]) -> DebugState:
     """Convert the engineer's prose into a typed `EngineerResponse`."""
-    structured = _formatter().with_structured_output(EngineerResponse)
+    structured = _formatter(runtime.context).with_structured_output(EngineerResponse)
     sys_prompt = SystemMessage(
         "You are a formatter. Convert the user's text into an EngineerResponse "
         "object. Preserve the Python code VERBATIM — do not reformat, lint, or "
@@ -388,7 +384,7 @@ def execution_evaluator(state: DebugState, runtime: Runtime[PlanContext]) -> Deb
         "Judge the execution above and emit a verdict. Cover these fields:\n\n"
         + schema_field_brief(ExecutionVerdict)
     )
-    structured = _critic().with_structured_output(ExecutionVerdict)
+    structured = _critic(runtime.context).with_structured_output(ExecutionVerdict)
     verdict: ExecutionVerdict = structured.invoke(
         [SystemMessage(system), HumanMessage(user)],
         config={"tags": ["execution_evaluator"]},
@@ -448,7 +444,7 @@ def step_evaluator(state: DebugState, runtime: Runtime[PlanContext]) -> DebugSta
         "Judge whether the step goal was achieved and emit a verdict. "
         "Cover these fields:\n\n" + schema_field_brief(StepVerdict)
     )
-    structured = _critic().with_structured_output(StepVerdict)
+    structured = _critic(runtime.context).with_structured_output(StepVerdict)
     verdict: StepVerdict = structured.invoke(
         [SystemMessage(system), HumanMessage(user)],
         config={"tags": ["step_evaluator"]},
