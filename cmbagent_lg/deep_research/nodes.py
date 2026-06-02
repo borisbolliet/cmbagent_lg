@@ -29,10 +29,29 @@ from langgraph.runtime import Runtime
 
 from cmbagent_lg.context import PlanContext
 from cmbagent_lg.deep_research.state import DeepResearchState
+from cmbagent_lg.persistence import save_deep_research_summary
 from cmbagent_lg.planning.schemas import Step
 from cmbagent_lg.researcher.graph import graph as researcher_graph
 from cmbagent_lg.self_debug.graph import graph as self_debug_graph
 from cmbagent_lg.timing import timed_node
+
+
+def _checkpoint(work_dir, plan, outcomes, summaries) -> None:
+    """Persist `logs/deep_research_run.json` after every step (best-effort).
+
+    Writing the run summary incrementally — not just at the very end — means a
+    crash mid-execution still leaves a valid checkpoint: a later
+    `restart_at_step=N` can recover the prior steps' summaries/outcomes, and an
+    orchestrator can read it to see exactly which step to resume from
+    (next = last fulfilled step_number + 1). A failed write must never break the
+    run, so swallow errors.
+    """
+    if not work_dir:
+        return
+    try:
+        save_deep_research_summary(work_dir, plan, outcomes, summaries)
+    except Exception as e:  # noqa: BLE001 — checkpointing must not crash the run
+        print(f"[deep_research] checkpoint write failed: {e}", file=sys.stderr, flush=True)
 
 
 # ── summary + manifest builders ─────────────────────────────────────────
@@ -177,10 +196,10 @@ def run_step(
                 f"(only `engineer` and `researcher` steps are implemented)"
             ),
         }
-        return {
-            "step_outcomes": state.get("step_outcomes", []) + [outcome],
-            "step_index": n + 1,
-        }
+        new_outcomes = state.get("step_outcomes", []) + [outcome]
+        _checkpoint(state.get("work_dir"), plan, new_outcomes,
+                    state.get("step_summaries", []))
+        return {"step_outcomes": new_outcomes, "step_index": n + 1}
 
     step_verdict = sub_state.get("current_step_verdict")
     fulfilled = bool(getattr(step_verdict, "fulfilled", False))
@@ -202,11 +221,13 @@ def run_step(
             or "step not fulfilled"
         )
 
+    new_summaries = state.get("step_summaries", []) + [_build_step_summary(step, sub_state)]
+    new_outcomes = state.get("step_outcomes", []) + [outcome]
+    # Checkpoint after every completed step so a later crash is recoverable.
+    _checkpoint(state.get("work_dir"), plan, new_outcomes, new_summaries)
     return {
-        "step_summaries": state.get("step_summaries", []) + [
-            _build_step_summary(step, sub_state)
-        ],
-        "step_outcomes": state.get("step_outcomes", []) + [outcome],
+        "step_summaries": new_summaries,
+        "step_outcomes": new_outcomes,
         "step_index": n + 1,
     }
 
