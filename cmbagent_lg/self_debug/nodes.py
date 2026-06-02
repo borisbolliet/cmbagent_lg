@@ -277,10 +277,14 @@ def executor(state: DebugState, runtime: Runtime[PlanContext]) -> DebugState:
         run_cwd = codebase.parent
         data_dir = run_cwd / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
-        # Snapshot data/ once per step (first attempt) so the manifest below
-        # can attribute new/modified files to this step.
-        if data_baseline is None:
-            data_baseline = _snapshot_data_dir(data_dir)
+        # Re-snapshot data/ at the START of *every* attempt (not just the
+        # first). The manifest below is then the files produced by the LATEST
+        # attempt only: throwaway plots/files written by an earlier *failed*
+        # attempt land in this snapshot's baseline and are excluded, so only the
+        # successful (final) attempt's outputs are attributed to the step and
+        # propagate downstream. Each attempt is a complete standalone script, so
+        # the successful attempt regenerates everything it needs.
+        data_baseline = _snapshot_data_dir(data_dir)
     else:
         with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as f:
             code_path = Path(f.name)

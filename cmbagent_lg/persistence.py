@@ -34,6 +34,19 @@ def save_final_plan(plan: Plan, work_dir: str | Path) -> Path:
     return out
 
 
+def load_final_plan(work_dir: str | Path) -> Plan:
+    """Read the final plan back from `{work_dir}/planning/final_plan.json`.
+
+    Inverse of `save_final_plan` — lets a downstream control phase (or an
+    out-of-process caller like the MCP server) load a previously-generated
+    plan and execute / restart it without re-planning.
+    """
+    src = Path(work_dir).expanduser() / "planning" / "final_plan.json"
+    if not src.is_file():
+        raise FileNotFoundError(f"No saved plan at {src}")
+    return Plan.model_validate_json(src.read_text())
+
+
 def save_trace_id(trace_id: str, work_dir: str | Path) -> Path:
     """Write the langfuse trace ID to `{work_dir}/langfuse_trace_id.txt`.
 
