@@ -150,6 +150,27 @@ work_dir/
                 deep_research_run.json  (the per-step CHECKPOINT)
 ```
 
+### `researcher`
+
+```
+researcher → step_evaluator
+    ▲              │ goal MET → END
+    └──────────────┘ goal MISS → researcher   (until attempts == max_n_attempts)
+```
+
+A researcher step writes **prose, not code** (uses the `researcher_model`). The node makes one LLM call, saves the raw markdown to `reports/step_N.md`, and a `step_evaluator` grades it (`StepVerdict`); on a goal-miss the unmet requirements + feedback feed back into the next attempt (bounded by `max_n_attempts`, failures demoted to `reports/step_N_failure_*.md`). The highest-numbered non-failure `reports/step_N.md` is the final report — Denario takes it as `results.md`.
+
+**What's in the researcher's context** (its system prompt is assembled from):
+
+- `main_task` — the overall research task.
+- `researcher_append_instructions` — task-specific guidance (e.g. Denario's "write the full Results section, ~2000 words, academic, interpret the plots/tables").
+- `previous_steps_execution_summary` — the cross-step context: each prior step's **executed code + stdout**, plus a **workspace file manifest** (the relative paths under `codebase/`, `data/`, `reports/`). This is how the researcher learns what the analysis produced.
+- `current_sub_task` + its bullet-point `current_instructions`.
+- `retry_context` — on a retry, the previous report and the evaluator's unmet requirements / feedback.
+- **the generated plots** — when `vlm_enabled`, the figures under `data/` are attached to the prompt as images, so the report is grounded in what the plots actually show rather than inferred.
+
+**Grounding caveat (important).** The researcher sees prior steps' **stdout**, *not* the contents of saved data files — so the engineer must **print** its key results/tables (the engineer prompt mandates this) for them to reach the report. With `vlm_enabled` the researcher also sees the plots. If the numbers aren't printed and the plots aren't shown, the researcher writes from the code alone and can state conclusions the data doesn't support.
+
 ## Run the examples
 
 ```bash
