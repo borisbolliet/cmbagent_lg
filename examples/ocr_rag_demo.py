@@ -6,18 +6,21 @@ embeddings stored in `sqlite-vec`**, with cosine/L2 nearest-neighbour retrieval.
 
 The five visible stages:
 
-  1. OCR — Mistral OCR-3 turns the paper PDF into clean **markdown** (headings,
-     tables, math), not just a flat text dump. This is the "get structured text
-     out of a document" step. (Born-digital reference PDFs are parsed locally
-     with PyMuPDF — fast and free; OCR is for the showcase document / scans.)
+  1. OCR — Mistral OCR-3 turns EVERY paper PDF (the main paper AND each
+     downloaded reference) into clean **markdown** (headings, tables, math) plus
+     its **figures**: with `include_image_base64=True` each page carries its
+     images, which we decode next to the markdown so `![img-0.jpeg](...)` refs
+     resolve. No local text extraction — OCR all the way down. Each document
+     lands in `corpus/<id>/document.md` with `corpus/<id>/img-*.jpeg`.
 
   2. References — the paper's citation list comes from **OpenAlex** (free, by
-     DOI → `referenced_works`), with each reference's open-access PDF URL. No
-     scraping the publisher.
+     DOI → `referenced_works`), with each reference's open-access PDF URL (and a
+     Europe PMC fallback for biomedical refs). No scraping the publisher.
 
-  3. Download — fetch the open-access subset of the cited PDFs.
+  3. Download — fetch the open-access subset of the cited PDFs (paywalled ones
+     can't be obtained, so they're skipped).
 
-  4. Embed — chunk every document and embed each chunk with
+  4. Embed — chunk every OCR'd document and embed each chunk with
      `text-embedding-3-small` (1536-d), then store the vectors + source metadata
      in a `sqlite-vec` table. THIS is the "index" a RAG system retrieves from.
 
@@ -30,20 +33,20 @@ Default paper: the open-access Nat. Genet. 2025 article
 "Transcription factor switching drives subtype-specific pancreatic cancer"
 (DOI 10.1038/s41588-025-02389-7), which cites 45 works.
 
-Everything is cached under the workdir, so re-runs (and live re-queries) are
-instant. Needs OPENAI_API_KEY (embeddings + answer) and, for stage 1,
-MISTRAL_API_KEY.
+Everything is cached under the workdir (OCR is never repeated), so re-runs and
+live re-queries are instant. Needs MISTRAL_API_KEY (OCR) and OPENAI_API_KEY
+(embeddings + answer).
 
 Usage:
-  python examples/ocr_rag_demo.py --build                  # OCR + refs + download + embed
+  python examples/ocr_rag_demo.py --build --max-refs 45    # OCR paper + all OA refs, embed
   python examples/ocr_rag_demo.py --ask "How was subtype switching validated in vivo?"
-  python examples/ocr_rag_demo.py --build --no-ocr         # skip Mistral (parse main paper locally)
-  python examples/ocr_rag_demo.py --build --max-refs 15 --ask "..."
+  python examples/ocr_rag_demo.py --ask "..." --no-answer  # retrieval only
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import sqlite3
@@ -104,12 +107,21 @@ def _download(url: str, dest: Path) -> bool:
 
 # ── 1. OCR (Mistral OCR-3) ───────────────────────────────────────────────
 
-def ocr_pdf(path: Path, model: str = "mistral-ocr-latest") -> str:
-    """Mistral OCR-3 on a LOCAL pdf → one markdown string (pages joined).
+def ocr_pdf_to_dir(path: Path, doc_dir: Path, model: str = "mistral-ocr-latest") -> tuple[str, int]:
+    """Mistral OCR-3 on a LOCAL pdf → `{doc_dir}/document.md` + the figures.
 
-    We upload the file and OCR a signed URL rather than passing a publisher URL,
-    because publishers (e.g. Nature) block Mistral's URL fetcher.
+    Every document (the main paper AND each reference) is OCR'd — no local text
+    extraction. We upload the file and OCR a signed URL (publishers like Nature
+    block Mistral's URL fetcher). With `include_image_base64=True` each page also
+    carries its figures; we decode them next to the markdown so the markdown's
+    `![img-0.jpeg](img-0.jpeg)` references resolve. Cached: skips if already done.
+
+    Returns (markdown, n_figures).
     """
+    md_path = doc_dir / "document.md"
+    if md_path.exists():  # cached — don't re-OCR / re-pay
+        return md_path.read_text(), len(list(doc_dir.glob("img-*")))
+
     from mistralai import Mistral
     client = Mistral(api_key=os.environ["MISTRAL_API_KEY"])
     up = client.files.upload(
@@ -117,16 +129,25 @@ def ocr_pdf(path: Path, model: str = "mistral-ocr-latest") -> str:
     )
     signed = client.files.get_signed_url(file_id=up.id, expiry=1)
     resp = client.ocr.process(
-        model=model, document={"type": "document_url", "document_url": signed.url}
+        model=model,
+        document={"type": "document_url", "document_url": signed.url},
+        include_image_base64=True,
     )
-    return "\n\n".join(p.markdown for p in resp.pages)
-
-
-def local_pdf_text(path: Path) -> str:
-    """Fast born-digital text extraction (PyMuPDF) — for reference PDFs / OCR fallback."""
-    import fitz
-    with fitz.open(path) as doc:
-        return "\n".join(page.get_text() for page in doc)
+    doc_dir.mkdir(parents=True, exist_ok=True)
+    n_fig = 0
+    for page in resp.pages:
+        for img in page.images or []:
+            b64 = img.image_base64 or ""
+            if "," in b64:                       # strip the data: URI prefix
+                b64 = b64.split(",", 1)[1]
+            try:
+                (doc_dir / img.id).write_bytes(base64.b64decode(b64))
+                n_fig += 1
+            except Exception:  # noqa: BLE001
+                pass
+    md = "\n\n".join(p.markdown for p in resp.pages)
+    md_path.write_text(md)
+    return md, n_fig
 
 
 # ── 2–3. references via OpenAlex + open-access download ───────────────────
@@ -290,65 +311,56 @@ def answer(query: str, hits: list[dict], model: str) -> str:
 def cmd_build(args) -> None:
     wd = Path(args.workdir).expanduser()
     (wd / "refs").mkdir(parents=True, exist_ok=True)
-    corpus_dir = wd / "corpus"; corpus_dir.mkdir(exist_ok=True)
+    corpus = wd / "corpus"; corpus.mkdir(exist_ok=True)
     paper_pdf = f"https://www.nature.com/articles/{args.doi.split('/')[-1]}.pdf"
+    if not os.environ.get("MISTRAL_API_KEY"):
+        sys.exit("MISTRAL_API_KEY not set — this demo OCRs every paper (no local fallback).")
 
-    # 1. OCR the main paper (or local fallback). We always download the PDF
-    #    ourselves (publishers block Mistral's fetcher), then upload it.
-    main_md = corpus_dir / "main_paper.md"
+    # 1. OCR the main paper → corpus/main_paper/{document.md, img-*.jpeg}
+    print("[1/4] OCR (Mistral OCR-3) on the main paper …")
     main_pdf = wd / "main_paper.pdf"
-    if not main_md.exists():
-        if not main_pdf.exists():
-            _download(paper_pdf, main_pdf)
-        if args.ocr and os.environ.get("MISTRAL_API_KEY") and main_pdf.exists():
-            try:
-                print("[1/4] OCR (Mistral OCR-3) on the main paper …")
-                main_md.write_text(ocr_pdf(main_pdf, args.ocr_model))
-                print(f"      → {main_md} ({main_md.stat().st_size} bytes of markdown)")
-            except Exception as e:  # noqa: BLE001
-                print(f"      Mistral OCR failed ({str(e)[:90]}); falling back to local text.")
-                main_md.write_text(local_pdf_text(main_pdf))
-        else:
-            print("[1/4] OCR skipped (no key / --no-ocr) — parsing the main paper locally.")
-            main_md.write_text(local_pdf_text(main_pdf))
-    else:
-        print(f"[1/4] main paper text cached → {main_md}")
+    if not main_pdf.exists():
+        _download(paper_pdf, main_pdf)
+    md, nfig = ocr_pdf_to_dir(main_pdf, corpus / "main_paper", args.ocr_model)
+    print(f"      → corpus/main_paper/document.md ({len(md)} chars, {nfig} figures)")
 
-    # 2. references
+    # 2. references (OpenAlex → citation list + OA pdf candidates)
     print(f"[2/4] fetching references for {args.doi} (OpenAlex) …")
     refs = fetch_references(args.doi, args.max_refs)
     oa = [r for r in refs if r["pdf_urls"]]
-    print(f"      {len(refs)} references, {len(oa)} with a candidate OA PDF")
+    print(f"      {len(refs)} references; {len(oa)} have a candidate open-access PDF")
 
-    # 3. download OA references → corpus (try each candidate url in order)
-    print(f"[3/4] downloading open-access reference PDFs …")
-    got = 0
+    # 3 + OCR. Download each OA reference and OCR it (markdown + figures).
+    print(f"[3/4] downloading + OCR-ing open-access references …")
+    done = total_fig = 0
     for r in oa:
+        doc_dir = corpus / r["id"]
+        if (doc_dir / "document.md").exists():
+            done += 1; total_fig += len(list(doc_dir.glob("img-*"))); continue
         dest = wd / "refs" / f"{r['id']}.pdf"
-        txt = corpus_dir / f"{r['id']}.txt"
-        if txt.exists():
-            got += 1; continue
         if not dest.exists():
             for url in r["pdf_urls"]:
                 if _download(url, dest):
                     break
         if dest.exists():
             try:
-                text = local_pdf_text(dest)
-                if text.strip():
-                    txt.write_text(text); got += 1
-            except Exception:  # noqa: BLE001
-                pass
-    print(f"      built corpus text for {got} references")
+                _, nf = ocr_pdf_to_dir(dest, doc_dir, args.ocr_model)
+                done += 1; total_fig += nf
+                print(f"      ocr {r['id']}: {nf} figures  ({r['title'][:60]})")
+            except Exception as e:  # noqa: BLE001
+                print(f"      ocr {r['id']} failed: {str(e)[:70]}")
+    print(f"      OCR'd {done}/{len(refs)} references  ({total_fig} reference figures)")
 
-    # 4. chunk + embed → sqlite-vec
+    # 4. chunk + embed every OCR'd document → sqlite-vec
     print("[4/4] chunking + embedding (text-embedding-3-small) → sqlite-vec …")
+    docs = sorted(corpus.glob("*/document.md"))
     chunks = []
-    for f in [main_md, *sorted(corpus_dir.glob("*.txt"))]:
-        chunks += chunk_text(f.read_text(errors="ignore"), source=f.name)
-    print(f"      {len(chunks)} chunks from {len(list(corpus_dir.glob('*'))) } documents")
+    for f in docs:
+        chunks += chunk_text(f.read_text(errors="ignore"), source=f.parent.name)
+    print(f"      {len(chunks)} chunks from {len(docs)} OCR'd documents")
     build_store(wd / "store.db", chunks)
-    print(f"\n✅ vector store ready: {wd/'store.db'}  ({len(chunks)} chunks)")
+    print(f"\n✅ vector store ready: {wd/'store.db'}  ({len(chunks)} chunks, {len(docs)} papers)")
+    print(f'   figures under {corpus}/<doc>/img-*.jpeg')
     print(f'   try:  python examples/ocr_rag_demo.py --ask "..." --workdir {args.workdir}')
 
 
@@ -372,9 +384,7 @@ def main():
     ap.add_argument("--workdir", default="~/Desktop/ocr_rag_demo")
     ap.add_argument("--doi", default=DEFAULT_DOI)
     ap.add_argument("--build", action="store_true", help="OCR + refs + download + embed")
-    ap.add_argument("--max-refs", type=int, default=20)
-    ap.add_argument("--ocr", dest="ocr", action="store_true", default=True)
-    ap.add_argument("--no-ocr", dest="ocr", action="store_false")
+    ap.add_argument("--max-refs", type=int, default=45)
     ap.add_argument("--ocr-model", default="mistral-ocr-latest")
     ap.add_argument("--ask", metavar="QUESTION")
     ap.add_argument("--topk", type=int, default=5)
