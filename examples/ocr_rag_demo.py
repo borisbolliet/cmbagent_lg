@@ -46,7 +46,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
 import sqlite3
@@ -105,49 +104,10 @@ def _download(url: str, dest: Path) -> bool:
         return False
 
 
-# ── 1. OCR (Mistral OCR-3) ───────────────────────────────────────────────
-
-def ocr_pdf_to_dir(path: Path, doc_dir: Path, model: str = "mistral-ocr-latest") -> tuple[str, int]:
-    """Mistral OCR-3 on a LOCAL pdf → `{doc_dir}/document.md` + the figures.
-
-    Every document (the main paper AND each reference) is OCR'd — no local text
-    extraction. We upload the file and OCR a signed URL (publishers like Nature
-    block Mistral's URL fetcher). With `include_image_base64=True` each page also
-    carries its figures; we decode them next to the markdown so the markdown's
-    `![img-0.jpeg](img-0.jpeg)` references resolve. Cached: skips if already done.
-
-    Returns (markdown, n_figures).
-    """
-    md_path = doc_dir / "document.md"
-    if md_path.exists():  # cached — don't re-OCR / re-pay
-        return md_path.read_text(), len(list(doc_dir.glob("img-*")))
-
-    from mistralai import Mistral
-    client = Mistral(api_key=os.environ["MISTRAL_API_KEY"])
-    up = client.files.upload(
-        file={"file_name": path.name, "content": path.read_bytes()}, purpose="ocr"
-    )
-    signed = client.files.get_signed_url(file_id=up.id, expiry=1)
-    resp = client.ocr.process(
-        model=model,
-        document={"type": "document_url", "document_url": signed.url},
-        include_image_base64=True,
-    )
-    doc_dir.mkdir(parents=True, exist_ok=True)
-    n_fig = 0
-    for page in resp.pages:
-        for img in page.images or []:
-            b64 = img.image_base64 or ""
-            if "," in b64:                       # strip the data: URI prefix
-                b64 = b64.split(",", 1)[1]
-            try:
-                (doc_dir / img.id).write_bytes(base64.b64decode(b64))
-                n_fig += 1
-            except Exception:  # noqa: BLE001
-                pass
-    md = "\n\n".join(p.markdown for p in resp.pages)
-    md_path.write_text(md)
-    return md, n_fig
+# ── 1. OCR (Mistral OCR) ─────────────────────────────────────────────────
+# The OCR step now lives in the package: `cmbagent_lg.ocr.ocr_pdf_to_dir`.
+# Needs the optional dependency:  pip install 'cmbagent_lg[ocr]'
+from cmbagent_lg.ocr import ocr_pdf_to_dir  # noqa: E402
 
 
 # ── 2–3. references via OpenAlex + open-access download ───────────────────

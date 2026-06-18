@@ -25,6 +25,9 @@ dependencies = [
 dev = ["jupyterlab", "ipykernel"]
 # The self_debug escalation node (opt-in) runs a Claude Agent SDK agent.
 escalation = ["claude-agent-sdk>=0.1"]
+# OCR (cmbagent_lg.ocr) uses the Mistral OCR API. Pin to the 1.x SDK: 2.x is a
+# restructured namespace package without the top-level `from mistralai import Mistral`.
+ocr = ["mistralai>=1.0,<2.0"]
 
 [project.scripts]
 cmbagent-lg-cost = "cmbagent_lg.cli:cost_main"

@@ -18,6 +18,7 @@ from cmbagent_lg.self_debug.schemas import (
 )
 from cmbagent_lg.researcher.graph import graph as researcher_graph
 from cmbagent_lg.deep_research.graph import graph as deep_research_graph
+from cmbagent_lg.ocr import ocr_pdf_to_dir
 
 __all__ = [
     # planning
@@ -36,6 +37,8 @@ __all__ = [
     "researcher_graph",
     # deep_research
     "deep_research_graph",
+    # ocr
+    "ocr_pdf_to_dir",
     # persistence
     "save_final_plan",
     "load_final_plan",
