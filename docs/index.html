@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cmbagent_lg — interactive claim-map demo</title>
+<style>
+  :root { --fg:#1a202c; --muted:#64748b; --accent:#2563eb; --card:#f8fafc; --border:#e2e8f0; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+         color:var(--fg); line-height:1.55; background:#fff; }
+  .wrap { max-width:760px; margin:0 auto; padding:48px 24px 80px; }
+  h1 { font-size:1.9rem; margin:0 0 .3em; }
+  .sub { color:var(--muted); font-size:1.05rem; margin:0 0 2em; }
+  .cards { display:grid; gap:18px; grid-template-columns:1fr 1fr; }
+  @media (max-width:560px){ .cards{ grid-template-columns:1fr; } }
+  a.card { display:block; text-decoration:none; color:inherit; background:var(--card);
+           border:1px solid var(--border); border-radius:12px; padding:22px;
+           transition:transform .08s ease, box-shadow .08s ease; }
+  a.card:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,.08); border-color:var(--accent); }
+  a.card h2 { margin:.1em 0 .4em; font-size:1.15rem; }
+  a.card p { margin:0; color:var(--muted); font-size:.93rem; }
+  .badge { display:inline-block; font-size:.72rem; font-weight:600; color:var(--accent);
+           background:#eff6ff; border-radius:999px; padding:2px 10px; margin-bottom:10px; }
+  .legend { margin-top:2.4em; font-size:.9rem; color:var(--muted); }
+  .legend b { color:var(--fg); }
+  code { background:#f1f5f9; padding:1px 6px; border-radius:5px; font-size:.85em; }
+  .foot { margin-top:2.6em; padding-top:1.4em; border-top:1px solid var(--border);
+          color:var(--muted); font-size:.85rem; }
+  .foot a { color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Interactive claim-map of a research paper</h1>
+  <p class="sub">A knowledge-graph view of the <b>claims</b>, their <b>interdependence</b>, and the
+  <b>datasets</b> behind them — extracted from <a href="https://www.biorxiv.org/content/10.1101/2026.05.26.726819v1">Pelicano et&nbsp;al. 2026</a>
+  (IL-1&nbsp;CAFs / STAT1 / pancreatic cancer). Built with
+  <a href="https://github.com/borisbolliet/cmbagent_lg">cmbagent_lg</a> + denario.</p>
+
+  <div class="cards">
+    <a class="card" href="pelicano_claimmap_3d.html">
+      <div class="badge">3D · rotatable</div>
+      <h2>3D view →</h2>
+      <p>Drag to orbit, scroll to zoom. Hover a node for the full claim. (Needs internet.)</p>
+    </a>
+    <a class="card" href="pelicano_claimmap_2d.html">
+      <div class="badge">2D · self-contained</div>
+      <h2>2D view →</h2>
+      <p>Pan &amp; zoom, tick-box filters by node/edge type. Works offline.</p>
+    </a>
+  </div>
+
+  <p class="legend">
+    <b>Nodes:</b> Claims (teal) &amp; the Datasets (brown) that support them.
+    <b>Edges:</b> <code>DEPENDS_ON</code> (claim → claim) and <code>SUPPORTED_BY</code> (claim → dataset).
+    Use the legend checkboxes to toggle node/edge types. Datasets with a red border have
+    <b>no public accession</b> — the paper's own sequencing data is not yet deposited.
+  </p>
+
+  <div class="foot">
+    Generated from the paper's OCR by an LLM claim-extraction pipeline, stored in a
+    Postgres+AGE+pgvector knowledge graph, and rendered with vis-network / 3d-force-graph.
+    Source: <a href="https://github.com/borisbolliet/cmbagent_lg">github.com/borisbolliet/cmbagent_lg</a>.
+  </div>
+</div>
+</body>
+</html>
