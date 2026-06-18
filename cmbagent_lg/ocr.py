@@ -53,10 +53,16 @@ def ocr_pdf_to_dir(
         return md_path.read_text(), len(list(out_dir.glob("img-*")))
 
     try:
-        from mistralai import Mistral
+        # The SDK moved the client in 2.x: `from mistralai import Mistral` (1.x)
+        # → `from mistralai.client import Mistral` (2.x, a namespace package with
+        # no top-level re-export). Support both; the OCR/files API is identical.
+        try:
+            from mistralai import Mistral  # 1.x
+        except ImportError:
+            from mistralai.client import Mistral  # 2.x
     except ImportError as e:
         raise ImportError(
-            "OCR needs the optional 'mistralai' dependency (1.x). "
+            "OCR needs the optional 'mistralai' dependency. "
             "Install it with:  pip install 'cmbagent_lg[ocr]'"
         ) from e
 
